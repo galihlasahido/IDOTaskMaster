@@ -26,3 +26,6 @@ Package.resolved
 *.dSYM.zip
 *.dSYM
 *.xcarchive
+
+# scripts/release.sh, dmg.sh, pkg.sh output
+dist/
