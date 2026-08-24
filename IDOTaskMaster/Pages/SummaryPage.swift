@@ -38,9 +38,20 @@ struct SummaryPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 16) {
+                    // `.frame(maxHeight: .infinity, alignment: .top)` on
+                    // each card (not inside `SummaryCard` itself, which
+                    // other call sites like `memoryUtilizationBand` still
+                    // want sized to its own content) stretches every
+                    // card's background/border to match the row's
+                    // tallest — `cpuOverviewCard`'s graph today — instead
+                    // of `meterTowersCard` (much shorter content) ending
+                    // this row's shortest box.
                     meterTowersCard
+                        .frame(maxHeight: .infinity, alignment: .top)
                     cpuOverviewCard
+                        .frame(maxHeight: .infinity, alignment: .top)
                     topProcessesCard
+                        .frame(maxHeight: .infinity, alignment: .top)
                 }
                 memoryUtilizationBand
                 bottomTileGrid
