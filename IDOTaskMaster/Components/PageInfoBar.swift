@@ -16,11 +16,10 @@ import SwiftUI
 /// `DataTable`, `CapacityBar`): it only knows how to lay out whatever
 /// health/process-count/generation values it's given, with no dependency
 /// on `Core`'s `Snapshot`/`ProviderHealth` types. Nothing about *where*
-/// those numbers come from belongs here — today `AppShell` has no live
-/// `Sampler` to read from (`SettingsStore`'s note: "no milestone has wired
-/// a live `Sampler` instance into the app yet"), so it hands this view the
-/// honest all-`nil`/zero defaults below; once a page owns a live snapshot
-/// stream, it feeds the same view real numbers with no change needed here.
+/// those numbers come from belongs here — `AppShell` feeds it real values
+/// from its own always-on `Sampler` (`App/AppShellStatusModel`), reading
+/// the all-`nil`/zero defaults below only until that first snapshot
+/// arrives (briefly, on launch).
 struct PageInfoBar: View {
     /// Providers reporting `.degraded` as of the most recent snapshot —
     /// `Snapshot.degradedProviderCount`. Meaningless while

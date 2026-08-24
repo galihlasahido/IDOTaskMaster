@@ -108,6 +108,14 @@ struct Snapshot: Sendable {
     /// `NPUSnapshot.unavailableReason` *inside* a non-`nil` `NPUSnapshot`
     /// is how this domain's "honest degradation" surfaces instead.
     let npu: NPUSnapshot?
+    /// System-wide process count for the bottom info bar (PLAN.md §1.1
+    /// "live process count"). Read via a cheap `proc_listallpids(nil, 0)`
+    /// call each tick — an estimate count with no buffer allocation, not
+    /// `ProcessProvider`'s full tree walk (that provider is deliberately
+    /// excluded from `Sampler`'s per-tick loop; see its doc comment).
+    /// `nil` when that call fails, read as "Unavailable" like every other
+    /// honest-degradation reading.
+    let processCount: Int?
 
     init(
         generation: UInt64,
@@ -120,7 +128,8 @@ struct Snapshot: Sendable {
         network: NetworkSnapshot? = nil,
         energy: EnergySnapshot? = nil,
         thermal: ThermalSnapshot? = nil,
-        npu: NPUSnapshot? = nil
+        npu: NPUSnapshot? = nil,
+        processCount: Int? = nil
     ) {
         self.generation = generation
         self.timestamp = timestamp
@@ -133,6 +142,7 @@ struct Snapshot: Sendable {
         self.energy = energy
         self.thermal = thermal
         self.npu = npu
+        self.processCount = processCount
     }
 
     /// Count of providers reporting `.degraded` this tick — the number

@@ -70,14 +70,16 @@ final class SettingsStore: ObservableObject {
     }
 
     /// The current update-speed preference. Setting this immediately
-    /// persists to `UserDefaults`. It does not by itself retune a
-    /// running `Sampler` — no milestone has wired a live `Sampler`
-    /// instance into the app yet (M0's `Sampler` is a standalone
-    /// skeleton); once one exists, its owner is expected to observe this
-    /// property and call `Sampler.setInterval(_:)` with
-    /// `samplerInterval` whenever it changes, the same way the View
-    /// menu's ⌘-1/2/3 commands and the Settings window are expected to
-    /// write through this property rather than to `Sampler` directly.
+    /// persists to `UserDefaults`. It does not yet retune any of the
+    /// `Sampler` instances now running (`SummaryViewModel`,
+    /// `PerformanceViewModel`, `AppShellStatusModel`, each fixed at
+    /// `Sampler.Interval.normal`/`.slow` today) — no owner observes this
+    /// property yet and calls `Sampler.setInterval(_:)` with
+    /// `samplerInterval` when it changes, the same way the View menu's
+    /// ⌘-1/2/3 commands and the Settings window are expected to write
+    /// through this property rather than to `Sampler` directly. Wiring
+    /// that observation up is separate follow-up work, not part of this
+    /// property's own contract.
     @Published var updateSpeed: UpdateSpeed {
         didSet {
             guard updateSpeed != oldValue else { return }

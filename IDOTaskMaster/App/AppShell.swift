@@ -4,8 +4,8 @@ import SwiftUI
 /// the bottom info bar (PLAN.md §3's `AppShell.swift # sidebar nav, page
 /// routing, bottom info bar`). The bottom info bar itself is
 /// `Components/PageInfoBar.swift` (PLAN.md §4 M1) — this file just anchors
-/// one under every destination; see that type's doc comment for what it
-/// shows and why its inputs are still placeholders here.
+/// one under every destination, fed live values by `AppShellStatusModel`
+/// below (see that type's doc comment for its `Sampler` lifetime).
 ///
 /// A `NavigationSplitView` rather than a hand-rolled `HStack` split: that
 /// is what gives the sidebar its native translucent macOS material and
@@ -19,10 +19,9 @@ import SwiftUI
 /// neutral restyle of [name removed]'s "PRO" divider (PLAN.md §2: "the sidebar
 /// loses [name removed]'s 'PRO' divider — one flat nav list (or a neutral 'Tools'
 /// divider for the same visual rhythm)"). Every row routes to a real,
-/// distinct page type (`Pages/*Page.swift`); each renders a
-/// `PlaceholderPageView` body today per this task's "(placeholder views
-/// allowed)" — later milestones fill each one in without touching this
-/// routing switch.
+/// distinct page type (`Pages/*Page.swift`); M1 let each render a
+/// `PlaceholderPageView` body, and later milestones have been filling
+/// them in one at a time without touching this routing switch.
 ///
 /// Settings is deliberately not a row in that `List`: PLAN.md §1.1 puts
 /// it at the sidebar's bottom, separate from the scrollable page list
@@ -46,6 +45,9 @@ struct AppShell: View {
     /// of folding Settings into `SidebarPage` — see that type's and this
     /// struct's doc comments for why Settings isn't a list row at all.
     @State private var settingsSelected = false
+    /// Feeds `PageInfoBar` real health/process-count/generation numbers —
+    /// see its doc comment for the shared-`Sampler` lifetime this owns.
+    @StateObject private var statusModel = AppShellStatusModel()
 
     var body: some View {
         NavigationSplitView {
@@ -55,13 +57,15 @@ struct AppShell: View {
                 detail
                 // `PageInfoBar` sits under every destination, matching
                 // PLAN.md §1.1's bottom status bar being shell chrome
-                // rather than a per-page element. No live `Sampler` is
-                // wired into the app yet (`SettingsStore`'s note), so this
-                // passes the view's honest all-`nil`/zero defaults;
-                // whichever page first owns a live snapshot stream can
-                // thread real values in without this call site changing
-                // shape.
-                PageInfoBar()
+                // rather than a per-page element, fed by `statusModel`'s
+                // own always-on `Sampler` (this shell never disappears
+                // while the app runs, unlike a per-page one).
+                PageInfoBar(
+                    degradedProviderCount: statusModel.degradedProviderCount,
+                    totalProviderCount: statusModel.totalProviderCount,
+                    processCount: statusModel.processCount,
+                    generation: statusModel.generation
+                )
             }
             .navigationTitle(navigationTitle)
         }
@@ -72,6 +76,7 @@ struct AppShell: View {
         .onChange(of: selection) { newValue in
             if newValue != nil { settingsSelected = false }
         }
+        .onAppear { statusModel.start() }
     }
 
     private var navigationTitle: String {
@@ -187,4 +192,53 @@ struct AppShell: View {
 
 #Preview {
     AppShell()
+}
+
+// MARK: - Status model
+
+/// Owns the shared `Sampler` behind the bottom `PageInfoBar` — the same
+/// `Sampler`-per-owner lifetime pattern `SummaryViewModel`/
+/// `PerformanceViewModel` use for their own pages, except this one starts
+/// once in `AppShell.onAppear` and simply runs for the app's lifetime
+/// (never stopped) since the shell it belongs to never disappears while a
+/// window is open, unlike a page that's swapped out when the user
+/// navigates elsewhere.
+///
+/// Deliberately its own `Sampler` instance rather than something pages
+/// reach into: each page already owns the one it needs for its own live
+/// data (`SummaryViewModel`'s doc comment on why that's per-visit rather
+/// than shared), and this model only ever needs the cheap, page-agnostic
+/// numbers `PageInfoBar` shows — health, process count, generation — not
+/// any page's per-domain payloads.
+@MainActor
+final class AppShellStatusModel: ObservableObject {
+    @Published private(set) var degradedProviderCount = 0
+    @Published private(set) var totalProviderCount = 0
+    @Published private(set) var processCount: Int?
+    @Published private(set) var generation: UInt64?
+
+    private let sampler = Sampler()
+    private var streamTask: Task<Void, Never>?
+
+    /// Starts the live snapshot stream if it isn't already running. Safe
+    /// to call repeatedly (`SwiftUI.onAppear` can fire more than once for
+    /// the same view instance).
+    func start() {
+        guard streamTask == nil else { return }
+        let sampler = sampler
+        streamTask = Task { [weak self] in
+            await sampler.start()
+            for await snapshot in sampler.stream() {
+                guard let self else { return }
+                self.ingest(snapshot)
+            }
+        }
+    }
+
+    private func ingest(_ snapshot: Snapshot) {
+        degradedProviderCount = snapshot.degradedProviderCount
+        totalProviderCount = snapshot.providersHealth.count
+        processCount = snapshot.processCount
+        generation = snapshot.generation
+    }
 }

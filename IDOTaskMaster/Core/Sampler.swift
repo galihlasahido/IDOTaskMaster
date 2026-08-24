@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Ticks at a configurable rate, incrementing a generation counter each
@@ -252,6 +253,15 @@ actor Sampler {
             health[NPUProvider.providerID] = .degraded(reason: error.localizedDescription)
         }
 
+        // `proc_listallpids(nil, 0)` returns an estimate count with no
+        // buffer allocation — the same "estimate" call `ProcessProvider`
+        // makes before sizing its real buffer — cheap enough for every
+        // tick, unlike that provider's full per-pid walk (kept out of
+        // this loop on purpose; see `ProcessProvider`'s doc comment).
+        // Negative/zero is a read failure, not "zero processes running".
+        let rawProcessCount = proc_listallpids(nil, 0)
+        let processCount: Int? = rawProcessCount > 0 ? Int(rawProcessCount) : nil
+
         let snapshot = Snapshot(
             generation: generation,
             timestamp: Date(),
@@ -263,7 +273,8 @@ actor Sampler {
             network: networkSnapshot,
             energy: energySnapshot,
             thermal: thermalSnapshot,
-            npu: npuSnapshot
+            npu: npuSnapshot,
+            processCount: processCount
         )
         for continuation in continuations.values {
             continuation.yield(snapshot)
