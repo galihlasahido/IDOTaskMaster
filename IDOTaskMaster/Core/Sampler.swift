@@ -6,13 +6,12 @@ import Foundation
 /// configured rate ... published via `AsyncStream` / `@Observable` model
 /// to the UI").
 ///
-/// This is the M0 skeleton: the tick loop, generation counter, and
-/// multi-subscriber publishing plumbing that later milestones hang real
-/// work off of. It does not sample any `Provider` yet — M2 adds a
-/// provider registry here so `tick()` awaits `CPUProvider`,
-/// `MemoryProvider`, etc. and folds their results (and any thrown errors,
-/// as `ProviderHealth.degraded`) into the published `Snapshot`. Until
-/// then every snapshot carries an empty `providersHealth`.
+/// M0 shipped the tick loop, generation counter, and multi-subscriber
+/// publishing plumbing with no `Provider` wired in. M2 starts filling that
+/// in: `tick()` now samples `CPUProvider`, `MemoryProvider`, `GPUProvider`,
+/// `DiskProvider`, `NetworkProvider`, `EnergyProvider`, `ThermalProvider`,
+/// and `NPUProvider`, folding each result (or, on a thrown error, a
+/// `ProviderHealth.degraded` entry) into the published `Snapshot`.
 ///
 /// An actor (rather than an `ObservableObject`) because sampling touches
 /// OS APIs that must not run on the main thread; UI code subscribes via
@@ -56,6 +55,20 @@ actor Sampler {
 
     private var continuations: [UUID: AsyncStream<Snapshot>.Continuation] = [:]
     private var tickTask: Task<Void, Never>?
+
+    /// M2's provider registry, growing one property per domain as its
+    /// `Provider` lands (PLAN.md §3 `Providers/`). Owned here rather than
+    /// as locals in `tick()` because providers like `CPUProvider` carry
+    /// state across ticks (previous sample's raw counts) that must survive
+    /// between calls.
+    private let cpuProvider = CPUProvider()
+    private let memoryProvider = MemoryProvider()
+    private let gpuProvider = GPUProvider()
+    private let diskProvider = DiskProvider()
+    private let networkProvider = NetworkProvider()
+    private let energyProvider = EnergyProvider()
+    private let thermalProvider = ThermalProvider()
+    private let npuProvider = NPUProvider()
 
     init(interval: Interval = .normal) {
         self.interval = interval
@@ -126,16 +139,131 @@ actor Sampler {
         continuations.removeValue(forKey: id)
     }
 
-    /// Advances `generation` and publishes one `Snapshot` to every
-    /// current subscriber. M0: no `Provider` exists yet, so
-    /// `providersHealth` is always empty; M2 replaces the body with a
-    /// concurrent await of each registered provider.
+    /// Advances `generation`, awaits every registered `Provider`, and
+    /// publishes one merged `Snapshot` to every current subscriber. Each
+    /// provider's failure is isolated — a thrown error becomes that
+    /// provider's `ProviderHealth.degraded` entry and a `nil` payload for
+    /// its domain, rather than failing the whole tick (PLAN.md's "honest
+    /// degradation": one bad provider must not take the others down).
     private func tick() async {
         generation += 1
+
+        var health: [String: ProviderHealth] = [:]
+
+        var cpuSnapshot: CPUSnapshot?
+        do {
+            // `CPUProvider.sample()` is a plain synchronous `throws`
+            // function (see `Provider`'s doc comment on why an async
+            // protocol requirement doesn't force every conformer to
+            // suspend) — called directly with no `await` since `cpuProvider`
+            // is held here as the concrete type, not `any Provider`.
+            cpuSnapshot = try cpuProvider.sample()
+            health[CPUProvider.providerID] = .ok
+        } catch {
+            health[CPUProvider.providerID] = .degraded(reason: error.localizedDescription)
+        }
+
+        var memorySnapshot: MemorySnapshot?
+        do {
+            // Same reasoning as `cpuProvider.sample()` above: a plain
+            // synchronous `throws` function, called directly (no `await`)
+            // since `memoryProvider` is held here as its concrete type.
+            memorySnapshot = try memoryProvider.sample()
+            health[MemoryProvider.providerID] = .ok
+        } catch {
+            health[MemoryProvider.providerID] = .degraded(reason: error.localizedDescription)
+        }
+
+        var gpuSnapshot: GPUSnapshot?
+        do {
+            // Same reasoning as `cpuProvider.sample()` above: a plain
+            // synchronous `throws` function, called directly (no `await`)
+            // since `gpuProvider` is held here as its concrete type.
+            gpuSnapshot = try gpuProvider.sample()
+            health[GPUProvider.providerID] = .ok
+        } catch {
+            health[GPUProvider.providerID] = .degraded(reason: error.localizedDescription)
+        }
+
+        var diskSnapshot: DiskSnapshot?
+        do {
+            // Same reasoning as `cpuProvider.sample()` above: a plain
+            // synchronous `throws` function, called directly (no `await`)
+            // since `diskProvider` is held here as its concrete type.
+            diskSnapshot = try diskProvider.sample()
+            health[DiskProvider.providerID] = .ok
+        } catch {
+            health[DiskProvider.providerID] = .degraded(reason: error.localizedDescription)
+        }
+
+        var networkSnapshot: NetworkSnapshot?
+        do {
+            // Same reasoning as `cpuProvider.sample()` above: a plain
+            // synchronous `throws` function, called directly (no `await`)
+            // since `networkProvider` is held here as its concrete type.
+            networkSnapshot = try networkProvider.sample()
+            health[NetworkProvider.providerID] = .ok
+        } catch {
+            health[NetworkProvider.providerID] = .degraded(reason: error.localizedDescription)
+        }
+
+        var energySnapshot: EnergySnapshot?
+        do {
+            // Same reasoning as `cpuProvider.sample()` above: a plain
+            // synchronous `throws` function, called directly (no `await`)
+            // since `energyProvider` is held here as its concrete type.
+            energySnapshot = try energyProvider.sample()
+            health[EnergyProvider.providerID] = .ok
+        } catch {
+            health[EnergyProvider.providerID] = .degraded(reason: error.localizedDescription)
+        }
+
+        var thermalSnapshot: ThermalSnapshot?
+        do {
+            // Same reasoning as `cpuProvider.sample()` above: a plain
+            // synchronous `throws` function, called directly (no `await`)
+            // since `thermalProvider` is held here as its concrete type.
+            // (`ThermalProvider.sample()` never actually throws — see its
+            // doc comment — so this branch's `catch` is effectively dead
+            // for this provider today, but is kept for the same reason
+            // every other provider here has one: `Provider.sample()` is a
+            // `throws` interface, and `Sampler` must not assume any given
+            // conformer never exercises it.)
+            thermalSnapshot = try thermalProvider.sample()
+            health[ThermalProvider.providerID] = .ok
+        } catch {
+            health[ThermalProvider.providerID] = .degraded(reason: error.localizedDescription)
+        }
+
+        var npuSnapshot: NPUSnapshot?
+        do {
+            // Same reasoning as `cpuProvider.sample()` above: a plain
+            // synchronous `throws` function, called directly (no `await`)
+            // since `npuProvider` is held here as its concrete type.
+            // (`NPUProvider.sample()` never actually throws — see its doc
+            // comment — so this branch's `catch` is effectively dead for
+            // this provider today, but is kept for the same reason every
+            // other provider here has one: `Provider.sample()` is a
+            // `throws` interface, and `Sampler` must not assume any given
+            // conformer never exercises it.)
+            npuSnapshot = try npuProvider.sample()
+            health[NPUProvider.providerID] = .ok
+        } catch {
+            health[NPUProvider.providerID] = .degraded(reason: error.localizedDescription)
+        }
+
         let snapshot = Snapshot(
             generation: generation,
             timestamp: Date(),
-            providersHealth: [:]
+            providersHealth: health,
+            cpu: cpuSnapshot,
+            memory: memorySnapshot,
+            gpu: gpuSnapshot,
+            disk: diskSnapshot,
+            network: networkSnapshot,
+            energy: energySnapshot,
+            thermal: thermalSnapshot,
+            npu: npuSnapshot
         )
         for continuation in continuations.values {
             continuation.yield(snapshot)
