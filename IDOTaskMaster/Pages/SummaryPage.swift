@@ -458,17 +458,23 @@ struct SummaryPage: View {
     /// selection/sparkline behavior — `StatTile`'s own doc comment
     /// documents this grid as the *static*, `CapacityBar`-embedding shape).
     ///
-    /// Each tile embeds a `CapacityBar` only where a genuinely bounded
-    /// fraction exists to draw: disk `activePercent` and GPU `utilizationPercent`
-    /// are already `0...100`; Thermals reuses `meterTowersCard`'s own
+    /// Every tile embeds a `CapacityBar` drawn against a real, bounded
+    /// quantity — never a guessed maximum (PLAN.md's honest-degradation
+    /// rule): disk `activePercent` and GPU `utilizationPercent` are
+    /// already `0...100`; Thermals reuses `meterTowersCard`'s own
     /// `0...110`°C ceiling rather than inventing a second one; Network has
     /// no known maximum bandwidth to measure against, so its bar instead
     /// shows the honest send/receive *split* of this tick's own combined
     /// rate (`networkShare(_:of:)`) — a real ratio, not a fabricated
-    /// percentage. Energy watts and NPU active/idle have no bounded
-    /// fraction at all, so those two tiles carry no bar rather than one
-    /// built against a guessed maximum — the restraint `StatTile`'s own
-    /// `content` doc comment allows ("... or nothing").
+    /// percentage. Energy's headline watts figure has no such ceiling
+    /// either, so its bar instead draws `battery.percent` — a real,
+    /// already-`0...100` reading, `Unavailable` on a battery-less Mac
+    /// rather than bounding watts against a made-up draw limit. NPU has no
+    /// bounded reading at all (`NPUSnapshot`'s own doc comment on why:
+    /// Apple exposes no ANE wattage/utilization API), so its bar is a
+    /// deliberately binary full/empty one echoing the same `isActive`
+    /// boolean the tile's headline text already reads as "Active"/"Idle"
+    /// — not a fabricated utilization percentage in disguise.
     private var bottomTileGrid: some View {
         SummaryCard(title: "System") {
             LazyVGrid(columns: Self.tileGridColumns, spacing: 10) {
@@ -568,7 +574,14 @@ struct SummaryPage: View {
             value: Fmt.watts(energy?.systemPowerWatts),
             secondaryText: energySecondaryText,
             isUnavailable: energy?.systemPowerWatts == nil
-        )
+        ) {
+            CapacityBar(
+                value: energy?.battery?.percent ?? 0,
+                color: DomainPalette.energy,
+                isUnavailable: energy?.battery?.percent == nil,
+                accessibilityLabel: "Battery charge"
+            )
+        }
     }
 
     private var gpuTile: some View {
@@ -597,7 +610,17 @@ struct SummaryPage: View {
             value: npu?.isActive.map { $0 ? "Active" : "Idle" } ?? "Unavailable",
             secondaryText: npu?.deviceName,
             isUnavailable: npu?.isActive == nil
-        )
+        ) {
+            // Binary full/empty, not a percentage — see `bottomTileGrid`'s
+            // doc comment on why NPU has no bounded reading to draw a real
+            // fraction against.
+            CapacityBar(
+                value: npu?.isActive == true ? 100 : 0,
+                color: DomainPalette.npu,
+                isUnavailable: npu?.isActive == nil,
+                accessibilityLabel: "Neural Engine activity"
+            )
+        }
     }
 
     private var thermalTile: some View {
