@@ -52,6 +52,9 @@
 		F1CC931379C79593987B8F20 /* Sampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B14BE14AD8E13ED021DF232 /* Sampler.swift */; };
 		F899A3AFAF61E3D8BCBB406A /* BenchmarksPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 600768385F41B390F6850754 /* BenchmarksPage.swift */; };
 		8B2C4E1A9D3F6057B2E4A1C6 /* TopProcessesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D9E3A7C2F1B48690AC5D3E7 /* TopProcessesProvider.swift */; };
+		79F0335CC463DC08F89A33BE /* ProcessProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD2C188D1DF9B0A5A286C539 /* ProcessProvider.swift */; };
+		76C3CAA707C24C95B1E35D5D /* ProcessOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 806516503F37477D8B4E0600 /* ProcessOutlineView.swift */; };
+		05B4180819D9E11A6CD2C0C5 /* UserOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E269CD0E2FD134CFDC202C21 /* UserOutlineView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -101,6 +104,9 @@
 		FADFD7FF9092C34E0DFA97A4 /* AppCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCommands.swift; sourceTree = "<group>"; };
 		FEEFDCC2A5DADE75BEB6C441 /* ServicesPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesPage.swift; sourceTree = "<group>"; };
 		5D9E3A7C2F1B48690AC5D3E7 /* TopProcessesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TopProcessesProvider.swift; path = TopProcessesProvider.swift; sourceTree = "<group>"; };
+		FD2C188D1DF9B0A5A286C539 /* ProcessProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProcessProvider.swift; path = ProcessProvider.swift; sourceTree = "<group>"; };
+		806516503F37477D8B4E0600 /* ProcessOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessOutlineView.swift; sourceTree = "<group>"; };
+		E269CD0E2FD134CFDC202C21 /* UserOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserOutlineView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -126,6 +132,7 @@
 				E6F4CEA77554414692714DBE /* ThermalProvider.swift */,
 				DD96CBDCFAD6300E4594367A /* NPUProvider.swift */,
 				5D9E3A7C2F1B48690AC5D3E7 /* TopProcessesProvider.swift */,
+				FD2C188D1DF9B0A5A286C539 /* ProcessProvider.swift */,
 			);
 			name = Providers;
 			path = Providers;
@@ -217,6 +224,8 @@
 				91F545DF4561B2DD8290A4FE /* StatTile.swift */,
 				2F2BCE2074655275A7E15232 /* PageInfoBar.swift */,
 				B76D58B9FB26ECF5CE7AE5C8 /* PageToolbar.swift */,
+				806516503F37477D8B4E0600 /* ProcessOutlineView.swift */,
+				E269CD0E2FD134CFDC202C21 /* UserOutlineView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -333,6 +342,9 @@
 				97853EA0FBCD48A884426DC1 /* ThermalProvider.swift in Sources */,
 				FA7CD8509E56A4724955D632 /* NPUProvider.swift in Sources */,
 				8B2C4E1A9D3F6057B2E4A1C6 /* TopProcessesProvider.swift in Sources */,
+				79F0335CC463DC08F89A33BE /* ProcessProvider.swift in Sources */,
+				76C3CAA707C24C95B1E35D5D /* ProcessOutlineView.swift in Sources */,
+				05B4180819D9E11A6CD2C0C5 /* UserOutlineView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
