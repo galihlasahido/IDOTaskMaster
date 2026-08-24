@@ -35,12 +35,20 @@ struct SummaryPage: View {
     @State private var topProcessesSort: DataTableSort? = DataTableSort(columnID: "cpu", ascending: false)
     /// Shared height for the top row's three cards — see the `HStack`'s
     /// own comment for why a literal height, not `maxHeight: .infinity`,
-    /// is what actually keeps them aligned. Sized to `cpuOverviewCard`'s
-    /// natural content: title(16) + spacing(10) + picker(24) + spacing(12)
-    /// + big readout(~38) + spacing(12) + graph(120) + spacing(12) +
-    /// caption(~14) + `SummaryCard`'s own 14pt top/bottom padding — with a
-    /// little headroom so that card's caption row never clips.
-    private static let topRowHeight: CGFloat = 320
+    /// is what actually keeps them aligned. `topProcessesCard` is this
+    /// row's tallest natural content, not `cpuOverviewCard` (an earlier,
+    /// wrong assumption here that undershot by ~18pt and let that card's
+    /// background silently overflow past its frame — `.frame(height:)`
+    /// proposes a height but does not itself clip a child that renders
+    /// taller, so the shortfall bled downward into `memoryUtilizationBand`
+    /// instead of registering as a layout error): `SummaryCard`'s 14pt
+    /// top/bottom padding(28) + title(~14) + its own 10pt spacing + the
+    /// caption row(~14) + 8pt spacing + the embedded `DataTable`'s own
+    /// explicit `.frame(height: 264)` ≈ 338, plus headroom for Dynamic
+    /// Type/locale variance. `.clipped()` on all three cards below is the
+    /// actual hard guarantee — this constant only has to be *generous*,
+    /// not pixel-perfect.
+    private static let topRowHeight: CGFloat = 352
 
     var body: some View {
         ScrollView {
@@ -50,28 +58,33 @@ struct SummaryPage: View {
                     // `maxHeight: .infinity`) on each card — this row sits
                     // inside `ScrollView`'s effectively unbounded height,
                     // where `maxHeight: .infinity` has no real ceiling to
-                    // stretch against and, worse, `topProcessesCard`
-                    // embeds a native `List` (`DataTable`), which sizes
-                    // itself rather than reliably deferring to a flexible
-                    // parent frame in that position. A fixed height taken
-                    // from `cpuOverviewCard`'s own natural content size
-                    // (this row's tallest, and the one card here with no
-                    // scrollable content of its own to absorb a fixed
-                    // bound) is what actually keeps all three
-                    // backgrounds/borders pixel-identical: shorter
-                    // content in `meterTowersCard` top-aligns with room
-                    // to spare below, and `topProcessesCard`'s `List`
-                    // simply shows as many rows as fit and scrolls for
-                    // the rest — which the "Top 12 of N" caption already
-                    // implies is a capped, scrollable view, not a
-                    // guarantee all 12 rows are visible without
-                    // scrolling.
+                    // stretch against. `.clipped()` right after it is not
+                    // optional decoration: `.frame(height:)` only
+                    // *proposes* that height to the card — a child that
+                    // needs more (as `topProcessesCard`'s title + caption +
+                    // its embedded `List`'s own fixed height did once
+                    // `topRowHeight` was set too low) still renders at its
+                    // full natural size, unclipped, silently overflowing
+                    // past the frame's reported bounds and into whatever
+                    // sits below in this `VStack` — exactly the "Top CPU
+                    // Processes glued to Memory Utilization" bug this pair
+                    // of modifiers fixes for good, independent of whether
+                    // `topRowHeight` is ever slightly off again. Shorter
+                    // content in `meterTowersCard` top-aligns with room to
+                    // spare below; `topProcessesCard`'s `List` shows as
+                    // many rows as fit and scrolls for the rest — which
+                    // the "Top 12 of N" caption already implies is a
+                    // capped, scrollable view, not a guarantee all 12 rows
+                    // are visible without scrolling.
                     meterTowersCard
                         .frame(height: Self.topRowHeight, alignment: .top)
+                        .clipped()
                     cpuOverviewCard
                         .frame(height: Self.topRowHeight, alignment: .top)
+                        .clipped()
                     topProcessesCard
                         .frame(height: Self.topRowHeight, alignment: .top)
+                        .clipped()
                 }
                 memoryUtilizationBand
                 bottomTileGrid
@@ -804,6 +817,19 @@ private struct SummaryCard<Content: View>: View {
             content
         }
         .padding(14)
+        // `.frame(maxHeight: .infinity, alignment: .top)` here, BEFORE
+        // `.background`, is what makes an outer `.frame(height:)` (the
+        // Summary top row's shared-height cards) actually stretch this
+        // card's background/border — not just its invisible layout box.
+        // Without it, wrapping a `SummaryCard` in a taller outer frame
+        // only repositions this already content-sized view inside extra
+        // blank space; the `RoundedRectangle` below is drawn from THIS
+        // view's own size, so it has to be the one that grows. Content
+        // stays top-aligned inside the (now possibly taller) card, same
+        // as a call site with no outer frame at all sees no change — an
+        // unconstrained `maxHeight: .infinity` just resolves to this
+        // VStack's own intrinsic height, exactly as before.
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color(nsColor: .windowBackgroundColor))
