@@ -106,6 +106,13 @@ struct SummaryPage: View {
 
     private var meterTowersCard: some View {
         SummaryCard {
+            // `maxHeight: .infinity` here is what lets the towers below
+            // actually use the extra room `SummaryCard` now stretches to
+            // (matching the row's tallest card, `topProcessesCard`) —
+            // without it, this `HStack` just hugs its natural (short)
+            // content and top-aligns inside the taller card, leaving the
+            // same dead space below the bars that `SummaryCard`'s own fix
+            // solved for the card's background.
             HStack(alignment: .top, spacing: 24) {
                 CompactMeterTower(
                     title: "CPU",
@@ -138,6 +145,7 @@ struct SummaryPage: View {
                     accessibilityLabel: "GPU usage"
                 )
             }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -722,7 +730,13 @@ private struct CompactMeterTower: View {
     /// "compact" in this task's title), sized for three towers to sit
     /// comfortably side by side in a dashboard card.
     private static let thickness: CGFloat = 12
-    private static let towerHeight: CGFloat = 96
+    /// Floor for the bar's height — its old fixed height, now a minimum
+    /// rather than the literal size, so it still reads as a proper tower
+    /// if this view is ever placed somewhere shorter than the Summary
+    /// page's own 352pt row. `maxHeight: .infinity` below is what lets it
+    /// grow past that floor to actually fill `meterTowersCard`'s card,
+    /// which now stretches to match its row's tallest sibling.
+    private static let minTowerHeight: CGFloat = 96
 
     var body: some View {
         VStack(spacing: 8) {
@@ -739,13 +753,14 @@ private struct CompactMeterTower: View {
                 isUnavailable: isUnavailable,
                 accessibilityLabel: accessibilityLabel
             )
-            .frame(height: Self.towerHeight)
+            .frame(minHeight: Self.minTowerHeight, maxHeight: .infinity)
             Text(title)
                 .font(.caption2)
                 .fontWeight(.medium)
                 .foregroundStyle(.secondary)
         }
         .frame(width: 56)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 }
 
