@@ -33,25 +33,45 @@ struct SummaryPage: View {
     /// user-sortable (click any header) the same as every other
     /// `DataTable` in the app.
     @State private var topProcessesSort: DataTableSort? = DataTableSort(columnID: "cpu", ascending: false)
+    /// Shared height for the top row's three cards — see the `HStack`'s
+    /// own comment for why a literal height, not `maxHeight: .infinity`,
+    /// is what actually keeps them aligned. Sized to `cpuOverviewCard`'s
+    /// natural content: title(16) + spacing(10) + picker(24) + spacing(12)
+    /// + big readout(~38) + spacing(12) + graph(120) + spacing(12) +
+    /// caption(~14) + `SummaryCard`'s own 14pt top/bottom padding — with a
+    /// little headroom so that card's caption row never clips.
+    private static let topRowHeight: CGFloat = 320
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 16) {
-                    // `.frame(maxHeight: .infinity, alignment: .top)` on
-                    // each card (not inside `SummaryCard` itself, which
-                    // other call sites like `memoryUtilizationBand` still
-                    // want sized to its own content) stretches every
-                    // card's background/border to match the row's
-                    // tallest — `cpuOverviewCard`'s graph today — instead
-                    // of `meterTowersCard` (much shorter content) ending
-                    // this row's shortest box.
+                    // A literal shared `.frame(height:)` (not
+                    // `maxHeight: .infinity`) on each card — this row sits
+                    // inside `ScrollView`'s effectively unbounded height,
+                    // where `maxHeight: .infinity` has no real ceiling to
+                    // stretch against and, worse, `topProcessesCard`
+                    // embeds a native `List` (`DataTable`), which sizes
+                    // itself rather than reliably deferring to a flexible
+                    // parent frame in that position. A fixed height taken
+                    // from `cpuOverviewCard`'s own natural content size
+                    // (this row's tallest, and the one card here with no
+                    // scrollable content of its own to absorb a fixed
+                    // bound) is what actually keeps all three
+                    // backgrounds/borders pixel-identical: shorter
+                    // content in `meterTowersCard` top-aligns with room
+                    // to spare below, and `topProcessesCard`'s `List`
+                    // simply shows as many rows as fit and scrolls for
+                    // the rest — which the "Top 12 of N" caption already
+                    // implies is a capped, scrollable view, not a
+                    // guarantee all 12 rows are visible without
+                    // scrolling.
                     meterTowersCard
-                        .frame(maxHeight: .infinity, alignment: .top)
+                        .frame(height: Self.topRowHeight, alignment: .top)
                     cpuOverviewCard
-                        .frame(maxHeight: .infinity, alignment: .top)
+                        .frame(height: Self.topRowHeight, alignment: .top)
                     topProcessesCard
-                        .frame(maxHeight: .infinity, alignment: .top)
+                        .frame(height: Self.topRowHeight, alignment: .top)
                 }
                 memoryUtilizationBand
                 bottomTileGrid
