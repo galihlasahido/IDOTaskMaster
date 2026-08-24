@@ -51,6 +51,7 @@
 		EDEBC2DC357448180002E9A0 /* SummaryPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A298F99E425606CF3BFADD /* SummaryPage.swift */; };
 		F1CC931379C79593987B8F20 /* Sampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B14BE14AD8E13ED021DF232 /* Sampler.swift */; };
 		F899A3AFAF61E3D8BCBB406A /* BenchmarksPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 600768385F41B390F6850754 /* BenchmarksPage.swift */; };
+		8B2C4E1A9D3F6057B2E4A1C6 /* TopProcessesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D9E3A7C2F1B48690AC5D3E7 /* TopProcessesProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -99,6 +100,7 @@
 		F81D96348853E9B1ADC3FA7D /* DetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailPane.swift; sourceTree = "<group>"; };
 		FADFD7FF9092C34E0DFA97A4 /* AppCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCommands.swift; sourceTree = "<group>"; };
 		FEEFDCC2A5DADE75BEB6C441 /* ServicesPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesPage.swift; sourceTree = "<group>"; };
+		5D9E3A7C2F1B48690AC5D3E7 /* TopProcessesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TopProcessesProvider.swift; path = TopProcessesProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -123,6 +125,7 @@
 				978ADD651D22408C8CEA398A /* EnergyProvider.swift */,
 				E6F4CEA77554414692714DBE /* ThermalProvider.swift */,
 				DD96CBDCFAD6300E4594367A /* NPUProvider.swift */,
+				5D9E3A7C2F1B48690AC5D3E7 /* TopProcessesProvider.swift */,
 			);
 			name = Providers;
 			path = Providers;
@@ -329,6 +332,7 @@
 				2AB9541A24C949EE96A8E58D /* EnergyProvider.swift in Sources */,
 				97853EA0FBCD48A884426DC1 /* ThermalProvider.swift in Sources */,
 				FA7CD8509E56A4724955D632 /* NPUProvider.swift in Sources */,
+				8B2C4E1A9D3F6057B2E4A1C6 /* TopProcessesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
