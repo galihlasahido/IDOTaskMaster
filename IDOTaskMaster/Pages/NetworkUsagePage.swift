@@ -12,14 +12,16 @@ import SwiftUI
 /// panel would just repeat what's already on screen rather than add
 /// anything, unlike Connections' own multi-field socket detail.
 ///
-/// `NetworkUsageViewModel` polls `NetTrafficProvider` on a 1-second
-/// cadence — matching that provider's own `nettop -s 1` interval, so
-/// (almost) every poll picks up a freshly completed block rather than
-/// re-reading one still in flight — the same "poll a standing actor on
-/// its own cadence" shape `ConnectionsViewModel` uses for
-/// `ConnectionsProvider`.
+/// `NetworkTrafficMonitor` (`App/NetworkTrafficMonitor.swift`) polls
+/// `NetTrafficProvider` on a 1-second cadence — matching that provider's
+/// own `nettop -s 1` interval, so (almost) every poll picks up a freshly
+/// completed block rather than re-reading one still in flight — the same
+/// "poll a standing actor on its own cadence" shape `ConnectionsViewModel`
+/// uses for `ConnectionsProvider`. Unlike `ConnectionsViewModel`, it's an
+/// app-lifetime `@EnvironmentObject`, not this page's own `@StateObject`
+/// — see its doc comment for why.
 struct NetworkUsagePage: View {
-    @StateObject private var model = NetworkUsageViewModel()
+    @EnvironmentObject private var model: NetworkTrafficMonitor
     @State private var searchText = ""
     @State private var sort: DataTableSort? = DataTableSort(columnID: "receive", ascending: false)
 
@@ -38,8 +40,6 @@ struct NetworkUsagePage: View {
                 ExportMenu(columns: Self.columns, rows: filteredReadings, suggestedName: "Network Usage")
             }
         }
-        .onAppear { model.start() }
-        .onDisappear { model.stop() }
     }
 
     // MARK: - Status line
@@ -50,7 +50,11 @@ struct NetworkUsagePage: View {
     /// `model.snapshot` and a fresh `model.unavailableReason` can be true
     /// at the same time (a `nettop` hiccup mid-session).
     private var statusLine: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
+            if model.snapshot == nil && model.isWarmingUp {
+                ProgressView()
+                    .controlSize(.small)
+            }
             Text(statusText)
                 .font(.caption)
                 .foregroundStyle(statusIsProblem ? Color(nsColor: .tertiaryLabelColor) : .secondary)
@@ -62,8 +66,15 @@ struct NetworkUsagePage: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
+    /// `isWarmingUp` gets its own, distinctly *not*-"Unavailable" wording
+    /// and a `ProgressView` spinner above — worded/styled like a real
+    /// problem (as it used to be, folded into `unavailableReason`) reads
+    /// as "this app is broken" for however long `nettop`'s first block
+    /// takes, rather than the ordinary one-time startup wait it actually
+    /// is (see `NetworkTrafficMonitor`'s own doc comment).
     private var statusText: String {
         guard let snapshot = model.snapshot else {
+            if model.isWarmingUp { return "Collecting the first traffic sample\u{2026}" }
             if let reason = model.unavailableReason { return "Unavailable: \(reason)" }
             return "Loading\u{2026}"
         }
@@ -76,8 +87,13 @@ struct NetworkUsagePage: View {
         return text
     }
 
+    /// Dims the status line's text only for a genuine problem or the
+    /// pre-first-sample gap where the tiles/table are still blank —
+    /// *not* while merely `isWarmingUp`'s spinner is the reason nothing's
+    /// shown yet, which reads as normal secondary-text loading rather
+    /// than something wrong.
     private var statusIsProblem: Bool {
-        model.snapshot == nil || model.unavailableReason != nil
+        model.snapshot == nil && !model.isWarmingUp
     }
 
     // MARK: - Stat tiles
@@ -190,7 +206,10 @@ struct NetworkUsagePage: View {
     }
 
     private var emptyMessage: String {
-        guard model.snapshot != nil else { return "No traffic data available." }
+        guard model.snapshot != nil else {
+            if model.isWarmingUp { return "Collecting the first traffic sample\u{2026}" }
+            return "No traffic data available."
+        }
         return searchText.isEmpty
             ? "No processes with network activity."
             : "No processes match the current filter."
@@ -288,88 +307,16 @@ private enum Fmt {
 }
 
 // MARK: - View model
-
-/// Drives `NetworkUsagePage`: polls `NetTrafficProvider` on a fixed 1-second
-/// cadence and keeps a short combined-rate history per direction for the
-/// stat tiles' sparklines — the same "own a private polling loop, keep a
-/// capped history array" shape `ConnectionsViewModel` uses for its own
-/// traffic sparkline, just with the polled provider *being* this page's
-/// primary data source rather than a side reading alongside a different
-/// one.
-@MainActor
-final class NetworkUsageViewModel: ObservableObject {
-    @Published private(set) var snapshot: NetTrafficSnapshot?
-    /// Set when the most recent poll threw; left in place alongside a
-    /// still-populated `snapshot` after a single missed poll, matching
-    /// `ConnectionsViewModel.unavailableReason`'s own rule.
-    @Published private(set) var unavailableReason: String?
-    /// Oldest-first combined-across-processes rate history, one entry per
-    /// poll that produced a snapshot, capped at `historyLimit`. A `nil`
-    /// entry marks a poll whose snapshot had no rate-bearing reading yet
-    /// (`HistoryGraph`'s own "leave a gap, don't guess" convention).
-    @Published private(set) var sendHistory: [Double?] = []
-    @Published private(set) var receiveHistory: [Double?] = []
-
-    /// `HistoryGraph`'s `valueRange` maps straight to pixel height with no
-    /// auto-scaling of its own (see that type's doc comment) — its
-    /// `0...100` default fits a percentage, not a byte rate that can run
-    /// from zero to tens of megabytes/sec, so both sparkline tiles share
-    /// this dynamically-sized range instead. Same "`0...max(peak, 1)`"
-    /// shape `PerformancePage.PerformanceViewModel.dynamicRange(for:)`
-    /// uses for its own network graph, and shared across both tiles
-    /// (rather than each scaling to its own peak) so their heights stay
-    /// visually comparable.
-    var combinedRateRange: ClosedRange<Double> {
-        let peak = (sendHistory + receiveHistory).compactMap { $0 }.max() ?? 0
-        return 0...max(peak, 1)
-    }
-
-    private let provider = NetTrafficProvider()
-    private var pollTask: Task<Void, Never>?
-    private static let pollInterval: TimeInterval = 1.0
-    private static let historyLimit = 60
-
-    func start() {
-        guard pollTask == nil else { return }
-        let provider = provider
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do {
-                    let result = try await provider.sample()
-                    guard let self, !Task.isCancelled else { return }
-                    self.snapshot = result
-                    self.unavailableReason = nil
-                    self.appendHistory(result)
-                } catch {
-                    guard let self, !Task.isCancelled else { return }
-                    self.unavailableReason = error.localizedDescription
-                }
-                guard !Task.isCancelled else { return }
-                try? await Task.sleep(nanoseconds: UInt64(Self.pollInterval * 1_000_000_000))
-            }
-        }
-    }
-
-    func stop() {
-        pollTask?.cancel()
-        pollTask = nil
-        let provider = provider
-        Task { await provider.stop() }
-    }
-
-    private func appendHistory(_ snapshot: NetTrafficSnapshot) {
-        sendHistory.append(snapshot.totalSendBytesPerSecond)
-        receiveHistory.append(snapshot.totalReceiveBytesPerSecond)
-        if sendHistory.count > Self.historyLimit {
-            sendHistory.removeFirst(sendHistory.count - Self.historyLimit)
-        }
-        if receiveHistory.count > Self.historyLimit {
-            receiveHistory.removeFirst(receiveHistory.count - Self.historyLimit)
-        }
-    }
-}
+//
+// `NetworkUsagePage`'s live data comes from `App/NetworkTrafficMonitor.swift`
+// now — an app-lifetime `@EnvironmentObject` (owned by `AppDelegate`,
+// started once at launch) rather than a per-page `@StateObject` started in
+// `onAppear`/stopped in `onDisappear`. See that type's own doc comment for
+// why: the backing `nettop` subprocess's slow first-block warm-up used to
+// get paid on every single page visit.
 
 #Preview {
     NetworkUsagePage()
+        .environmentObject(NetworkTrafficMonitor())
         .frame(width: 900, height: 600)
 }

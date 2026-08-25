@@ -59,6 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// read and write the *same* instance — see that type's own doc
     /// comment.
     let commandPalette = CommandPaletteController()
+    /// Per-process network send/receive rates (`NetworkUsagePage`).
+    /// Owned here, alongside `alertsEngine`/`historyStore`, for the same
+    /// reason: the backing `nettop` subprocess's first block is a slow
+    /// warm-up (see that type's own doc comment) that should be paid at
+    /// most once per launch, not every time the user re-opens the page.
+    let networkTraffic = NetworkTrafficMonitor()
 
     private var shortcut: GlobalShortcutManager?
     private var cancellables = Set<AnyCancellable>()
@@ -96,6 +102,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // currently open. Wrapped in `Task` since `HistoryStore.start()` is
         // an actor method.
         Task { await historyStore.start() }
+        // Starts the network-traffic monitor immediately too, for the same
+        // reason as `historyStore` above — see `NetworkTrafficMonitor`'s
+        // own doc comment for why paying `nettop`'s warm-up cost here,
+        // once, beats paying it on every `NetworkUsagePage` visit.
+        networkTraffic.start()
 
         settings.$globalShortcutEnabled
             .dropFirst() // current value already applied just above

@@ -101,6 +101,7 @@
 		C3DCA92A9A3F89344FFC2F24 /* WindowAccessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF0D4EF1B290CCB21D94E4D /* WindowAccessor.swift */; };
 		C56FADCD5739D1507F0EFCB2 /* DiskProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C823B918FA41D7B40E96FB1C /* DiskProvider.swift */; };
 		CDEF551491E977B8E4775707 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 442C2C82205B40F42175416D /* HistoryStore.swift */; };
+		D026A1E495B31BD6AC68437E /* NetworkTrafficMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DEBB24731AF55165BD8E1E9 /* NetworkTrafficMonitor.swift */; };
 		D0DE6916643BE1737C6AF53E /* NetTrafficProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D085EA0604FC3E1AE981E13 /* NetTrafficProvider.swift */; };
 		D49AAB97E8C22DC2126941D0 /* ServicesPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660A70909CA6096C1BACB8C6 /* ServicesPage.swift */; };
 		D66D28FBD4D177CEC4CCE1AB /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436E9ADA2EAA787DEC37C0E7 /* SettingsStore.swift */; };
@@ -179,6 +180,7 @@
 		866D2DA58EACFA5263512391 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		8A8A6164FF059DA6F71D0836 /* DTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DTOs.swift; sourceTree = "<group>"; };
 		8C7333263A5FA4E1662D46AA /* InternetBenchmarkRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InternetBenchmarkRunner.swift; sourceTree = "<group>"; };
+		8DEBB24731AF55165BD8E1E9 /* NetworkTrafficMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkTrafficMonitor.swift; sourceTree = "<group>"; };
 		91248898672B9174BB935AFE /* MenuBarExtraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarExtraView.swift; sourceTree = "<group>"; };
 		9908753726CB3698AE625D0F /* EnergyProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnergyProvider.swift; sourceTree = "<group>"; };
 		99A3CE67E37CE061716250E8 /* NPUProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NPUProvider.swift; sourceTree = "<group>"; };
@@ -354,6 +356,7 @@
 				C7BE229A89B96467F773CF3C /* LoginItemManager.swift */,
 				E93AC014F93432D1115A7F10 /* MainWindowController.swift */,
 				91248898672B9174BB935AFE /* MenuBarExtraView.swift */,
+				8DEBB24731AF55165BD8E1E9 /* NetworkTrafficMonitor.swift */,
 				436E9ADA2EAA787DEC37C0E7 /* SettingsStore.swift */,
 				AAF0D4EF1B290CCB21D94E4D /* WindowAccessor.swift */,
 			);
@@ -557,6 +560,7 @@
 				26FAF601EC944590F7F2A92E /* NPUProvider.swift in Sources */,
 				D0DE6916643BE1737C6AF53E /* NetTrafficProvider.swift in Sources */,
 				D6E40A865BE4162A5C158FEA /* NetworkProvider.swift in Sources */,
+				D026A1E495B31BD6AC68437E /* NetworkTrafficMonitor.swift in Sources */,
 				464558495F98870582E2162B /* NetworkUsagePage.swift in Sources */,
 				695F84E3F5020181B6CA2626 /* OpenFilesProvider.swift in Sources */,
 				20694FFDF5DDE69DACA4AB60 /* PageInfoBar.swift in Sources */,

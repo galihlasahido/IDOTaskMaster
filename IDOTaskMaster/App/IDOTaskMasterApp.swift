@@ -41,6 +41,7 @@ struct IDOTaskMasterApp: App {
                 // `AppCommands` below drives the same instance's
                 // `isPresented` from its "Command Palette…" menu item.
                 .environmentObject(appDelegate.commandPalette)
+                .environmentObject(appDelegate.networkTraffic)
                 // `HistoryStore` is an `actor`, not an `ObservableObject`,
                 // so it rides the plain environment (see
                 // `EnvironmentValues.historyStore` in `Pages/HistoryPage.swift`)
