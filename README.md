@@ -1,5 +1,8 @@
 # IDOTaskMaster
 
+[![Support via PayPal](https://img.shields.io/badge/PayPal-Support-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/abahido)
+[![Support via Lynk.id](https://img.shields.io/badge/Lynk.id-Support-FB6B35?style=for-the-badge&logo=kofi&logoColor=white)](https://lynk.id/abahido/s/z52m3ekew032)
+
 A native macOS system monitor / task manager with a deep, power-user feature set,
 presented in **Activity Monitor's native visual language** — SF Pro, standard controls,
 subtle filled-area graphs, correct light & dark appearance. No neon, no custom fonts,
@@ -188,6 +191,19 @@ For Claude Desktop or any other MCP client that reads a JSON config, add an entr
   }
 }
 ```
+
+## Support
+
+IDOTaskMaster is free, open source, and will stay that way — no license keys, no
+paywalled pages, no ads. If it's saved you a trip to Activity Monitor often enough
+to be worth a coffee, a small contribution goes a long way toward keeping it built
+and maintained:
+
+[![Support via PayPal](https://img.shields.io/badge/PayPal-Support-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/abahido)
+[![Support via Lynk.id](https://img.shields.io/badge/Lynk.id-Support-FB6B35?style=for-the-badge&logo=kofi&logoColor=white)](https://lynk.id/abahido/s/z52m3ekew032)
+
+Not able to contribute? Starring the repo, filing an issue, or just telling another
+Mac user about it helps just as much. Thank you either way. 🙏
 
 ## License
 
