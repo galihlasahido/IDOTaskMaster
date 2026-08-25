@@ -59,11 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// read and write the *same* instance — see that type's own doc
     /// comment.
     let commandPalette = CommandPaletteController()
-    /// Per-process network send/receive rates (`NetworkUsagePage`).
-    /// Owned here, alongside `alertsEngine`/`historyStore`, for the same
-    /// reason: the backing `nettop` subprocess's first block is a slow
-    /// warm-up (see that type's own doc comment) that should be paid at
-    /// most once per launch, not every time the user re-opens the page.
+    /// Per-process network send/receive rates (`NetworkUsagePage`). Owned
+    /// here, alongside `alertsEngine`/`historyStore`, so it survives page
+    /// navigation once started — but unlike those, **not** auto-started
+    /// in `applicationDidFinishLaunching` below; see this type's own doc
+    /// comment for why it waits for the user's explicit "Start
+    /// Collecting" instead.
     let networkTraffic = NetworkTrafficMonitor()
 
     private var shortcut: GlobalShortcutManager?
@@ -102,11 +103,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // currently open. Wrapped in `Task` since `HistoryStore.start()` is
         // an actor method.
         Task { await historyStore.start() }
-        // Starts the network-traffic monitor immediately too, for the same
-        // reason as `historyStore` above — see `NetworkTrafficMonitor`'s
-        // own doc comment for why paying `nettop`'s warm-up cost here,
-        // once, beats paying it on every `NetworkUsagePage` visit.
-        networkTraffic.start()
+        // `networkTraffic` is deliberately NOT started here — see its own
+        // doc comment. It only starts once the user clicks "Start
+        // Collecting" on `NetworkUsagePage`.
 
         settings.$globalShortcutEnabled
             .dropFirst() // current value already applied just above

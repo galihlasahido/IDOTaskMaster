@@ -4,21 +4,29 @@ import Foundation
 /// fixed 1-second cadence and keeps a short combined-rate history per
 /// direction for the stat tiles' sparklines.
 ///
-/// Owned by `AppDelegate` and started once at launch, alongside
-/// `alertsEngine`/`historyStore`/`menuBarStatus` — **not** a per-page
-/// `@StateObject` started in `onAppear`/stopped in `onDisappear` the way
-/// this type used to be (`NetworkUsageViewModel`). That per-page lifetime
-/// meant the backing `nettop` subprocess was killed every time the user
-/// navigated away from Network Usage and relaunched from zero every time
-/// they came back — paying `nettop -d`'s "first block is a lifetime-totals
-/// baseline, not a delta" warm-up cost (which, per that provider's own doc
-/// comment, can take much longer than one `-s 1` interval on a Mac with
-/// hundreds of processes for `nettop -P` to walk) on *every single visit*,
-/// not just once per app launch. Making this app-lifetime means that cost
-/// is paid at most once, before the user has necessarily even opened the
-/// page.
+/// Owned by `AppDelegate`, alongside `alertsEngine`/`historyStore`/
+/// `menuBarStatus`, but **not** auto-started at launch the way those are —
+/// `start()` only runs once the user explicitly asks for it, from
+/// `NetworkUsagePage`'s "Not collecting network traffic yet" centered
+/// button (matching `DiskSpacePage`'s own user-initiated "Start Scan"
+/// shape, per the app's own convention that an expensive standing resource
+/// — here, a continuously-running `nettop` subprocess sampling every
+/// process on the Mac once a second — shouldn't start costing CPU before
+/// the user has asked for what it's for). Once started, though, it keeps
+/// running for the rest of the app's lifetime (not stopped in
+/// `onDisappear`) rather than being torn down and warmed back up on every
+/// page visit — `nettop -d`'s first logged block is always a
+/// lifetime-totals baseline, not a delta (see `NetTrafficProvider`'s own
+/// doc comment), so relaunching it fresh each time paid that warm-up cost
+/// — worse on a Mac with hundreds of processes for `nettop -P` to walk —
+/// on every single visit instead of just the first.
 @MainActor
 final class NetworkTrafficMonitor: ObservableObject {
+    /// `true` once the user has clicked "Start Collecting" — before that,
+    /// `NetworkUsagePage` shows its centered explanation + button instead
+    /// of stat tiles/table that would otherwise just sit on "Unavailable"
+    /// forever with no way to tell the user why.
+    @Published private(set) var hasStarted = false
     @Published private(set) var snapshot: NetTrafficSnapshot?
     /// Set only for a genuine problem (`nettop` missing, wouldn't launch,
     /// or exited) — never for `NetTrafficProviderError
@@ -35,8 +43,11 @@ final class NetworkTrafficMonitor: ObservableObject {
     /// finishes — i.e. exactly the window `NetTrafficProviderError
     /// .stillCollectingFirstSample` covers. `NetworkUsagePage` reads this
     /// to show a friendly, unmistakably-a-loading-state message instead of
-    /// folding it into `unavailableReason`.
-    @Published private(set) var isWarmingUp = true
+    /// folding it into `unavailableReason`. `false` (not `true`) until
+    /// `start()` actually runs — before that there's nothing "warming
+    /// up," collection simply hasn't been asked for yet (`hasStarted`
+    /// above is what gates the page's own idle-vs-loading distinction).
+    @Published private(set) var isWarmingUp = false
     /// Oldest-first combined-across-processes rate history, one entry per
     /// poll that produced a snapshot, capped at `historyLimit`. A `nil`
     /// entry marks a poll whose snapshot had no rate-bearing reading yet
@@ -65,6 +76,8 @@ final class NetworkTrafficMonitor: ObservableObject {
 
     func start() {
         guard pollTask == nil else { return }
+        hasStarted = true
+        isWarmingUp = true
         let provider = provider
         pollTask = Task { [weak self] in
             while !Task.isCancelled {

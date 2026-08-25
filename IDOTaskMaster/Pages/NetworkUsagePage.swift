@@ -27,12 +27,17 @@ struct NetworkUsagePage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            statusLine
-            Divider()
-            statTileRow
-            Divider()
-            table
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if model.hasStarted {
+                statusLine
+                Divider()
+                statTileRow
+                Divider()
+                table
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                idleState
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .pageToolbar(searchText: $searchText, searchPrompt: "Filter by Process or PID")
         .toolbar {
@@ -40,6 +45,37 @@ struct NetworkUsagePage: View {
                 ExportMenu(columns: Self.columns, rows: filteredReadings, suggestedName: "Network Usage")
             }
         }
+    }
+
+    // MARK: - Idle state
+
+    /// Shown in place of everything else until the user clicks "Start
+    /// Collecting" — matching `DiskSpacePage`'s own user-initiated-scan
+    /// shape (PLAN.md §2's restraint on standing background cost) rather
+    /// than starting `nettop` the moment this page — or even the app
+    /// itself — appears. See `NetworkTrafficMonitor`'s own doc comment.
+    private var idleState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "network")
+                .font(.system(size: 40))
+                .foregroundStyle(.tertiary)
+            Text("Not Collecting Network Traffic")
+                .font(.title2)
+                .fontWeight(.semibold)
+            Text("Samples every process's send and receive rate once a second via nettop. Runs in the background once started, for the rest of this session.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 380)
+            Button("Start Collecting") {
+                model.start()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding(.top, 4)
+        }
+        .padding(24)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     // MARK: - Status line
