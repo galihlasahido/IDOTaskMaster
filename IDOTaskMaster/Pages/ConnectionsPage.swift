@@ -36,6 +36,10 @@ struct ConnectionsPage: View {
     @State private var sort: DataTableSort? = DataTableSort(columnID: "app", ascending: true)
     @State private var selectedSocketID: String?
     @State private var filter: ConnectionFilterChip = .all
+    /// Drives `connectionQuitConfirmationDialog` below — set by the
+    /// toolbar's process-action button, the same "state a confirmation
+    /// dialog watches" shape `ProcessesPage.pendingQuitPID` uses.
+    @State private var pendingKillPID: pid_t?
 
     /// Fixed detail-panel width — PLAN.md's own "right detail panel"
     /// placement for this page (see this type's own doc comment), sized
@@ -61,14 +65,32 @@ struct ConnectionsPage: View {
                     .frame(maxHeight: .infinity)
             }
         }
-        .pageToolbar(searchText: $searchText, searchPrompt: "Filter by App, Address, or Port")
+        .pageToolbar(
+            searchText: $searchText,
+            searchPrompt: "Filter by App, Address, or Port",
+            showsProcessActions: true,
+            quitLabel: "Quit Owning Process",
+            quitAction: selectedSocket.map { socket in { pendingKillPID = socket.pid } }
+        )
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 ExportMenu(columns: Self.columns, rows: filteredSockets, suggestedName: "Connections")
             }
         }
+        .connectionQuitConfirmationDialog(pendingPID: $pendingKillPID, name: pendingKillProcessName)
         .onAppear { model.start() }
         .onDisappear { model.stop() }
+    }
+
+    /// The process name to show in the quit-confirmation dialog. Looked
+    /// up by pid rather than reusing `selectedSocket.processName` directly
+    /// because the dialog can still be open (its own `pendingKillPID`
+    /// already captured) after the underlying socket disappears from the
+    /// next poll — matching `ProcessesPage`'s own "the dialog survives
+    /// past its trigger" reasoning for looking its name up independently.
+    private var pendingKillProcessName: String? {
+        guard let pendingKillPID, let sockets = model.catalog?.sockets else { return nil }
+        return sockets.first(where: { $0.pid == pendingKillPID })?.processName
     }
 
     // MARK: - Status line
@@ -539,6 +561,49 @@ final class ConnectionsViewModel: ObservableObject {
         trafficHistory.append(total)
         if trafficHistory.count > Self.trafficHistoryLimit {
             trafficHistory.removeFirst(trafficHistory.count - Self.trafficHistoryLimit)
+        }
+    }
+}
+
+// MARK: - Quit confirmation dialog
+
+private extension View {
+    /// Quit/Force Quit/Cancel confirmation for the toolbar's "Quit Owning
+    /// Process" button, mirroring `ProcessesPage`'s own
+    /// `quitConfirmationDialog` (same `ProcessActions.quit(pid:)`/
+    /// `forceQuit(pid:)` calls, same Quit/Force Quit/Cancel shape) but
+    /// with copy specific to this page: there's no way to close *just one
+    /// socket* without root (this app's own "No sudo/helper tool in v1"
+    /// rule — see `ConnectionsProvider`'s doc comments), so "killing a
+    /// connection" here always means quitting the process that owns it,
+    /// and the dialog says so plainly rather than implying something
+    /// narrower than what actually happens.
+    func connectionQuitConfirmationDialog(pendingPID: Binding<pid_t?>, name: String?) -> some View {
+        confirmationDialog(
+            "Quit \u{201C}\(name ?? "This Process")\u{201D}?",
+            isPresented: Binding(
+                get: { pendingPID.wrappedValue != nil },
+                set: { isPresented in
+                    if !isPresented { pendingPID.wrappedValue = nil }
+                }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pid = pendingPID.wrappedValue {
+                Button("Quit") {
+                    ProcessActions.quit(pid: pid)
+                    pendingPID.wrappedValue = nil
+                }
+                Button("Force Quit", role: .destructive) {
+                    ProcessActions.forceQuit(pid: pid)
+                    pendingPID.wrappedValue = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingPID.wrappedValue = nil
+                }
+            }
+        } message: {
+            Text("There\u{2019}s no way to close just this one connection \u{2014} quitting ends the whole process. Force Quit terminates it immediately.")
         }
     }
 }
