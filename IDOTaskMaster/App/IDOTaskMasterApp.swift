@@ -35,6 +35,13 @@ struct IDOTaskMasterApp: App {
         WindowGroup {
             AppShell()
                 .environmentObject(appDelegate.settings)
+                .environmentObject(appDelegate.alertsEngine)
+                // `HistoryStore` is an `actor`, not an `ObservableObject`,
+                // so it rides the plain environment (see
+                // `EnvironmentValues.historyStore` in `Pages/HistoryPage.swift`)
+                // rather than `.environmentObject` like `settings`/
+                // `alertsEngine` above.
+                .environment(\.historyStore, appDelegate.historyStore)
                 .preferredColorScheme(appDelegate.settings.appTheme.colorScheme)
                 .background(
                     WindowAccessor { window in

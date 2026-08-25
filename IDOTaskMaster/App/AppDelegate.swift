@@ -36,6 +36,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// sample data for the whole process lifetime, not just while a window
     /// happens to be open — see that type's own doc comment.
     let dockIconRenderer: DockIconRenderer
+    /// Evaluates the user's alert rules against live snapshots and posts
+    /// `UserNotifications` (M9's first task, `Core/AlertsEngine.swift`).
+    /// Owned here, alongside `menuBarStatus`/`dockIconRenderer`, for the
+    /// same reason: a watchdog is only useful if it keeps evaluating rules
+    /// for the whole process lifetime, not just while `AlertsPage` happens
+    /// to be the visible page — see that type's own doc comment.
+    let alertsEngine = AlertsEngine()
+    /// Downsampled, pruned SQLite persistence of every domain's history
+    /// (M9's second task, `Core/HistoryStore.swift`). Owned here, alongside
+    /// `alertsEngine`, for the same reason: history is only useful if it
+    /// keeps recording for the whole process lifetime, not just while the
+    /// future `HistoryPage` happens to be the visible page — see that
+    /// type's own doc comment. An `actor` rather than a plain stored
+    /// property read directly by views: every access goes through `await`,
+    /// matching how the rest of this app already reaches provider data.
+    let historyStore = HistoryStore()
 
     private var shortcut: GlobalShortcutManager?
     private var cancellables = Set<AnyCancellable>()
@@ -62,6 +78,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // doc comment for why this, like `menuBarStatus.start()` above, is
         // called once here rather than from any view's `onAppear`.
         dockIconRenderer.start()
+        // Starts the alert watchdog immediately too, for the same reason
+        // as `menuBarStatus`/`dockIconRenderer` above — rules must keep
+        // evaluating (and notifications keep firing) whether or not the
+        // Alerts page, or any window at all, is currently open.
+        alertsEngine.start()
+        // Starts the history recorder immediately too, for the same reason
+        // as `alertsEngine` above — it must keep recording (and, later,
+        // rolling up/pruning) whether or not a `HistoryPage` window is
+        // currently open. Wrapped in `Task` since `HistoryStore.start()` is
+        // an actor method.
+        Task { await historyStore.start() }
 
         settings.$globalShortcutEnabled
             .dropFirst() // current value already applied just above

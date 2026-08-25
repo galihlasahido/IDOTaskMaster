@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FE2017D4F28ABBE67DCD893A /* AlertsEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1449C7C9C1B7FAE7E6BE626 /* AlertsEngine.swift */; };
+		9101A2A9ACDF4EFDB25B370A /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0763A4283D49178ACA4267 /* HistoryStore.swift */; };
 		08460D63BF086E0DAC01B926 /* UsersPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 159AA41FE16437778BEE07FF /* UsersPage.swift */; };
 		092429574F33EEF07F6C2B64 /* CPUBenchmarkRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67FCBD73EA19F28834B9B8A2 /* CPUBenchmarkRunner.swift */; };
 		0B12FB098FEA042E13D1BABF /* AlertsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 203E9680B9F3139B2FFCA959 /* AlertsPage.swift */; };
@@ -64,6 +66,7 @@
 		D49AAB97E8C22DC2126941D0 /* ServicesPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660A70909CA6096C1BACB8C6 /* ServicesPage.swift */; };
 		D66D28FBD4D177CEC4CCE1AB /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436E9ADA2EAA787DEC37C0E7 /* SettingsStore.swift */; };
 		D6E40A865BE4162A5C158FEA /* NetworkProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F3E4CDB91772DAE53EDEB2D /* NetworkProvider.swift */; };
+		E7651E7BCE52BDA5BCDC9D2D /* NetTrafficProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31CD3B161FE99EBF0077A67C /* NetTrafficProvider.swift */; };
 		D9951B77215370690E4A65F1 /* ProviderProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80F182C30E1C87751B8F640 /* ProviderProtocol.swift */; };
 		DF303951E1D0C3E7FD7E17F2 /* ProcessesPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5009B2554DAE801AA048226B /* ProcessesPage.swift */; };
 		DF39D83CFD0FAAF201946714 /* GlobalShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEA4593D403174148C5D28C /* GlobalShortcutManager.swift */; };
@@ -92,6 +95,8 @@
 		1A0FD592ECCE99670D21B388 /* BenchmarksPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarksPage.swift; sourceTree = "<group>"; };
 		1F7F684DB7818A0322D43C10 /* ConnectionsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionsPage.swift; sourceTree = "<group>"; };
 		203E9680B9F3139B2FFCA959 /* AlertsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsPage.swift; sourceTree = "<group>"; };
+		B1449C7C9C1B7FAE7E6BE626 /* AlertsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsEngine.swift; sourceTree = "<group>"; };
+		0A0763A4283D49178ACA4267 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		26F3DC34850C6238684F32CF /* TopProcessesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopProcessesProvider.swift; sourceTree = "<group>"; };
 		3759B4CB5B6032B470CB0683 /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
 		3B14BE14AD8E13ED021DF232 /* Sampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sampler.swift; sourceTree = "<group>"; };
@@ -104,6 +109,7 @@
 		5009B2554DAE801AA048226B /* ProcessesPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessesPage.swift; sourceTree = "<group>"; };
 		51599970816C008807A4BB86 /* ThermalProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalProvider.swift; sourceTree = "<group>"; };
 		5F3E4CDB91772DAE53EDEB2D /* NetworkProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProvider.swift; sourceTree = "<group>"; };
+		31CD3B161FE99EBF0077A67C /* NetTrafficProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetTrafficProvider.swift; sourceTree = "<group>"; };
 		62236EEAEABB13D1B24AC500 /* InstalledAppsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledAppsProvider.swift; sourceTree = "<group>"; };
 		660A70909CA6096C1BACB8C6 /* ServicesPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesPage.swift; sourceTree = "<group>"; };
 		67FCBD73EA19F28834B9B8A2 /* CPUBenchmarkRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUBenchmarkRunner.swift; sourceTree = "<group>"; };
@@ -180,6 +186,8 @@
 		2575D467309D7C775EFAE6F1 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				B1449C7C9C1B7FAE7E6BE626 /* AlertsEngine.swift */,
+				0A0763A4283D49178ACA4267 /* HistoryStore.swift */,
 				B80F182C30E1C87751B8F640 /* ProviderProtocol.swift */,
 				3B14BE14AD8E13ED021DF232 /* Sampler.swift */,
 				3759B4CB5B6032B470CB0683 /* Snapshot.swift */,
@@ -272,6 +280,7 @@
 				0800A0570A1ED314A9FB5EC5 /* GPUProvider.swift */,
 				62236EEAEABB13D1B24AC500 /* InstalledAppsProvider.swift */,
 				702A0734F4CD8940D938682F /* MemoryProvider.swift */,
+				31CD3B161FE99EBF0077A67C /* NetTrafficProvider.swift */,
 				5F3E4CDB91772DAE53EDEB2D /* NetworkProvider.swift */,
 				99A3CE67E37CE061716250E8 /* NPUProvider.swift */,
 				E504A60690DE13EC1668B422 /* ProcessProvider.swift */,
@@ -370,6 +379,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FE2017D4F28ABBE67DCD893A /* AlertsEngine.swift in Sources */,
 				0B12FB098FEA042E13D1BABF /* AlertsPage.swift in Sources */,
 				51C80EE77481548410B8031D /* AppCommands.swift in Sources */,
 				6138613726DA9C7184098670 /* AppDelegate.swift in Sources */,
@@ -398,6 +408,7 @@
 				DF39D83CFD0FAAF201946714 /* GlobalShortcutManager.swift in Sources */,
 				B64EC4D77F6573F39AF4EF8C /* HistoryGraph.swift in Sources */,
 				1B4CA9C41624EA85037265F8 /* HistoryPage.swift in Sources */,
+				9101A2A9ACDF4EFDB25B370A /* HistoryStore.swift in Sources */,
 				40A7EF8A8F0BBF45861E2A7D /* IDOTaskMasterApp.swift in Sources */,
 				F09D3761EBCD018E378713D0 /* InstalledAppsPage.swift in Sources */,
 				6F6EFC2BAC3B3A026D1340FF /* InstalledAppsProvider.swift in Sources */,
@@ -408,6 +419,7 @@
 				37D16D7712BA7A986CD0E913 /* MenuBarExtraView.swift in Sources */,
 				49A9BDBE01FF37CBA4A475B7 /* MetricDomain.swift in Sources */,
 				26FAF601EC944590F7F2A92E /* NPUProvider.swift in Sources */,
+				E7651E7BCE52BDA5BCDC9D2D /* NetTrafficProvider.swift in Sources */,
 				D6E40A865BE4162A5C158FEA /* NetworkProvider.swift in Sources */,
 				464558495F98870582E2162B /* NetworkUsagePage.swift in Sources */,
 				20694FFDF5DDE69DACA4AB60 /* PageInfoBar.swift in Sources */,
