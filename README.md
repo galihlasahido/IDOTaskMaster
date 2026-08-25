@@ -192,3 +192,7 @@ For Claude Desktop or any other MCP client that reads a JSON config, add an entr
   }
 }
 ```
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
