@@ -33,7 +33,7 @@ struct DiskSpacePage: View {
     @State private var selectedFileID: String?
     @State private var selectedHistoryID: UUID?
 
-    private static let overviewHeight: CGFloat = 200
+    private static let overviewHeight: CGFloat = 190
 
     var body: some View {
         VStack(spacing: 0) {
@@ -194,17 +194,33 @@ struct DiskSpacePage: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    // MARK: - Overview: bubble chart + type legend
+    // MARK: - Overview: storage bar + type legend
+
+    /// Live category totals to show right now — the just-finished scan's,
+    /// or (while one is still running) the in-progress scan's own running
+    /// totals, so this whole section fills in progressively instead of
+    /// staying blank until the entire folder tree has been walked. Held
+    /// back to `nil` until at least one byte has actually been counted, so
+    /// the very first instant of a scan still reads as "Scanning…" rather
+    /// than flashing an all-zero legend before real data exists.
+    private var displayCategoryTotals: [DiskSpaceCategoryTotal]? {
+        if let result = model.result { return result.categoryTotals }
+        if let progress = model.progress, progress.bytesScanned > 0 { return progress.categoryTotals }
+        return nil
+    }
+
+    private var displayTotalBytes: UInt64? {
+        if let result = model.result { return result.totalBytes }
+        if let progress = model.progress, progress.bytesScanned > 0 { return progress.bytesScanned }
+        return nil
+    }
 
     @ViewBuilder
     private var overviewSection: some View {
-        if let result = model.result {
-            HStack(spacing: 16) {
-                DiskSpaceBubbleChart(totals: result.categoryTotals, colorForCategory: Self.color(for:))
-                    .frame(width: Self.overviewHeight - 24, height: Self.overviewHeight - 24)
-                Divider()
-                legend(for: result.categoryTotals, totalBytes: result.totalBytes)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        if let totals = displayCategoryTotals, let totalBytes = displayTotalBytes {
+            VStack(alignment: .leading, spacing: 10) {
+                DiskSpaceStorageBar(totals: totals, totalBytes: totalBytes, colorForCategory: Self.color(for:))
+                legend(for: totals, totalBytes: totalBytes)
             }
             .padding(12)
         } else {
@@ -488,60 +504,73 @@ private enum Fmt {
     }()
 }
 
-// MARK: - Bubble chart
+// MARK: - Storage bar
 
-/// PLAN.md's "Balls" bubble-chart visualization, one circle per non-empty
-/// `DiskSpaceFileCategory`, area proportional to that category's byte
-/// share (not radius-proportional — a radius-proportional bubble chart
-/// visually exaggerates small categories and is a well-known way to
-/// mislead a reader about relative magnitude). Kept private to this file
-/// rather than in `Components/`, matching `PowerFreqPage`'s own precedent
-/// for a page-specific visualization only that one page needs (see that
-/// type's doc comment).
-private struct DiskSpaceBubbleChart: View {
+/// A single wide, rounded-rect horizontal bar split into one segment per
+/// non-empty `DiskSpaceFileCategory`, width proportional to that
+/// category's byte share — the same shape macOS System Settings' own
+/// Storage panel uses, chosen (replacing an earlier circle-packing bubble
+/// chart) specifically because it degrades well when fed a growing,
+/// still-in-progress `DiskSpaceScanProgress.categoryTotals` snapshot: a
+/// segmented bar's widths just shift smoothly as totals grow, where a
+/// bubble-packing layout would have to keep re-solving circle positions
+/// and jump around distractingly on every live update. Kept private to
+/// this file rather than in `Components/`, matching `PowerFreqPage`'s own
+/// precedent for a page-specific visualization only that one page needs.
+private struct DiskSpaceStorageBar: View {
     let totals: [DiskSpaceCategoryTotal]
+    let totalBytes: UInt64
     let colorForCategory: (DiskSpaceFileCategory) -> Color
 
+    private static let height: CGFloat = 26
+    private static let cornerRadius: CGFloat = 6
+    private static let segmentSpacing: CGFloat = 2
+    private static let minSegmentWidth: CGFloat = 3
+
     private var nonzeroTotals: [DiskSpaceCategoryTotal] { totals.filter { $0.sizeBytes > 0 } }
-    private var totalBytes: UInt64 { totals.reduce(0) { $0 + $1.sizeBytes } }
 
     var body: some View {
         Group {
             if nonzeroTotals.isEmpty {
-                emptyState
+                RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                    .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
             } else {
                 GeometryReader { proxy in
-                    let bubbles = Self.layout(for: nonzeroTotals, in: proxy.size)
-                    ZStack {
-                        Canvas { context, _ in
-                            for bubble in bubbles {
-                                let rect = CGRect(
-                                    x: bubble.center.x - bubble.radius,
-                                    y: bubble.center.y - bubble.radius,
-                                    width: bubble.radius * 2,
-                                    height: bubble.radius * 2
-                                )
-                                let path = Path(ellipseIn: rect)
-                                let color = colorForCategory(bubble.category)
-                                context.fill(path, with: .color(color.opacity(0.82)))
-                                context.stroke(path, with: .color(color), lineWidth: 1)
-                            }
-                        }
-                        ForEach(bubbles) { bubble in
-                            if bubble.radius >= 20 {
-                                Text(Self.percentLabel(bubble.sizeBytes, of: totalBytes))
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .position(bubble.center)
-                            }
+                    HStack(spacing: Self.segmentSpacing) {
+                        ForEach(segments(forWidth: proxy.size.width)) { segment in
+                            colorForCategory(segment.total.category)
+                                .frame(width: segment.width)
                         }
                     }
                 }
+                .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
             }
         }
+        .frame(height: Self.height)
+        .animation(.easeOut(duration: 0.25), value: totals)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("File type breakdown by size")
         .accessibilityValue(accessibilityValueText)
+    }
+
+    private struct Segment: Identifiable {
+        var id: DiskSpaceFileCategory { total.category }
+        let total: DiskSpaceCategoryTotal
+        let width: CGFloat
+    }
+
+    /// Every segment's width, proportional to its byte share of
+    /// `totalBytes`, floored at `minSegmentWidth` so even a tiny non-empty
+    /// category stays visible/tappable rather than disappearing to a
+    /// sliver.
+    private func segments(forWidth width: CGFloat) -> [Segment] {
+        guard totalBytes > 0, !nonzeroTotals.isEmpty else { return [] }
+        let spacingTotal = Self.segmentSpacing * CGFloat(max(nonzeroTotals.count - 1, 0))
+        let available = max(width - spacingTotal, 1)
+        return nonzeroTotals.map { total in
+            let fraction = Double(total.sizeBytes) / Double(totalBytes)
+            return Segment(total: total, width: max(available * CGFloat(fraction), Self.minSegmentWidth))
+        }
     }
 
     private var accessibilityValueText: String {
@@ -550,102 +579,9 @@ private struct DiskSpaceBubbleChart: View {
             .joined(separator: ", ")
     }
 
-    private var emptyState: some View {
-        Text("No files found.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private static func percentLabel(_ part: UInt64, of total: UInt64) -> String {
         guard total > 0 else { return "0%" }
         return String(format: "%.0f%%", Double(part) / Double(total) * 100)
-    }
-
-    // MARK: - Layout
-
-    private struct PlacedBubble: Identifiable {
-        var id: DiskSpaceFileCategory { category }
-        let category: DiskSpaceFileCategory
-        let center: CGPoint
-        let radius: CGFloat
-        let sizeBytes: UInt64
-    }
-
-    /// Sizes each bubble by `sqrt(byteShare)` (area-proportional), packs
-    /// them with `placeCircle(radius:among:)`, then scales+translates the
-    /// whole packed cluster to fit `size`.
-    private static func layout(for totals: [DiskSpaceCategoryTotal], in size: CGSize) -> [PlacedBubble] {
-        guard !totals.isEmpty else { return [] }
-        let maxBytes = totals.map(\.sizeBytes).max() ?? 1
-        let baseUnit: CGFloat = 60
-        let minRadiusFraction: CGFloat = 0.22
-
-        let sized = totals
-            .sorted { $0.sizeBytes > $1.sizeBytes }
-            .map { total -> (total: DiskSpaceCategoryTotal, radius: CGFloat) in
-                let fraction = maxBytes > 0 ? Double(total.sizeBytes) / Double(maxBytes) : 0
-                let radius = max(baseUnit * CGFloat(fraction.squareRoot()), baseUnit * minRadiusFraction)
-                return (total, radius)
-            }
-
-        var placedCircles: [(center: CGPoint, radius: CGFloat)] = []
-        var placements: [(total: DiskSpaceCategoryTotal, center: CGPoint, radius: CGFloat)] = []
-        for entry in sized {
-            let center = placeCircle(radius: entry.radius, among: placedCircles)
-            placedCircles.append((center, entry.radius))
-            placements.append((entry.total, center, entry.radius))
-        }
-
-        let maxExtent = placedCircles.reduce(CGFloat(1)) { partial, circle in
-            max(partial, hypot(circle.center.x, circle.center.y) + circle.radius)
-        }
-        let availableRadius = max(min(size.width, size.height) / 2 - 6, 1)
-        let scale = availableRadius / maxExtent
-        let origin = CGPoint(x: size.width / 2, y: size.height / 2)
-
-        return placements.map { placement in
-            PlacedBubble(
-                category: placement.total.category,
-                center: CGPoint(x: origin.x + placement.center.x * scale, y: origin.y + placement.center.y * scale),
-                radius: placement.radius * scale,
-                sizeBytes: placement.total.sizeBytes
-            )
-        }
-    }
-
-    /// Places one more circle of `radius` with no overlap against
-    /// `existing`, by walking outward along an Archimedean-style spiral
-    /// from the origin until it finds a free spot. Not a tight/minimal
-    /// packing like d3's sibling-pack algorithm, but simple, always
-    /// terminating (a step cap guarantees that even in a pathological
-    /// case), and more than enough for the handful of category bubbles
-    /// this chart ever draws. The very first circle always lands exactly
-    /// at the origin.
-    private static func placeCircle(radius: CGFloat, among existing: [(center: CGPoint, radius: CGFloat)]) -> CGPoint {
-        guard !existing.isEmpty else { return .zero }
-
-        let angleStep: CGFloat = .pi / 18
-        let stepsPerRevolution = (2 * CGFloat.pi) / angleStep
-        let radiusStep: CGFloat = max(radius, 8) * 0.12
-        var angle: CGFloat = 0
-        var distance: CGFloat = radiusStep
-
-        for _ in 0..<4000 {
-            let candidate = CGPoint(x: distance * cos(angle), y: distance * sin(angle))
-            let overlaps = existing.contains { other in
-                let dx = other.center.x - candidate.x
-                let dy = other.center.y - candidate.y
-                let minDistance = other.radius + radius - 0.5
-                return (dx * dx + dy * dy) < (minDistance * minDistance)
-            }
-            if !overlaps {
-                return candidate
-            }
-            angle += angleStep
-            distance += radiusStep / stepsPerRevolution
-        }
-        return CGPoint(x: distance * cos(angle), y: distance * sin(angle))
     }
 }
 

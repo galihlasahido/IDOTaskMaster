@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Which of PLAN.md §1.1's Disk Space legend buckets ("File Type legend
@@ -80,8 +81,13 @@ enum DiskSpaceFileCategory: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    // "raw" is deliberately not a media extension despite being a common
+    // camera-RAW suffix: it collides with the generic ".raw" sparse virtual
+    // disk images VM/container tools (Docker Desktop, QEMU, ...) use, which
+    // tend to be enormous — better to leave those as an honest "Other" than
+    // fold multi-hundred-GB VM disks into "Media."
     private static let mediaExtensions: Set<String> = [
-        "jpg", "jpeg", "png", "gif", "heic", "heif", "bmp", "tiff", "tif", "svg", "webp", "raw", "psd", "ico",
+        "jpg", "jpeg", "png", "gif", "heic", "heif", "bmp", "tiff", "tif", "svg", "webp", "psd", "ico",
         "mp3", "wav", "aac", "flac", "m4a", "aiff", "alac", "ogg",
         "mp4", "mov", "avi", "mkv", "m4v", "wmv", "webm", "mpg", "mpeg",
     ]
@@ -114,8 +120,18 @@ struct DiskSpaceScanProgress: Sendable, Equatable {
     let bytesScanned: UInt64
     /// The path most recently finished, shown as a live "scanning ⁠…"
     /// caption. `nil` only for the very first tick, before anything has
-    /// been read yet.
+    /// been read yet. Once the scan is parallelized (see
+    /// `DiskSpaceScanner.scanTopLevelInParallel`), this is whichever of
+    /// several concurrently-running subtrees happened to trip this tick —
+    /// still a real, just-finished path, just not necessarily "the" one
+    /// most recently touched globally.
     let currentPath: String?
+    /// A live snapshot of category totals as scanned so far — always
+    /// exactly `DiskSpaceFileCategory.allCases.count` entries, same as
+    /// `DiskSpaceScanResult.categoryTotals`. Lets `DiskSpacePage` show a
+    /// growing overview bar/legend while the scan is still running instead
+    /// of only once it completes.
+    let categoryTotals: [DiskSpaceCategoryTotal]
 }
 
 /// One category's aggregate size/count within a finished scan — a row in
@@ -262,8 +278,68 @@ actor DiskSpaceScanner {
 
     private static let progressStride = 150
     private static let topListLimit = 60
+    /// Upper bound on how many of `rootPath`'s immediate children
+    /// `scanTopLevelInParallel` scans at once. Filesystem walks are
+    /// I/O-bound (dominated by `stat`-style syscalls, not CPU work), so
+    /// concurrency past a modest number of threads has diminishing
+    /// returns and risks thrashing the I/O layer on Macs with very high
+    /// core counts — `activeProcessorCount` is still respected as a
+    /// ceiling below this.
+    private static let maxWorkerCount = 8
 
     private struct ScanCancelled: Error {}
+
+    /// One directory entry's `lstat(2)` result — deliberately reads the raw
+    /// struct instead of going through `FileManager.attributesOfItem`,
+    /// which boxes every field into an `NSDictionary`/`NSNumber` (a real
+    /// cost across millions of entries, per this type's own original doc
+    /// comment) and, more importantly, only exposes `st_size` — a file's
+    /// *apparent* size, not how much disk it actually occupies. Those two
+    /// diverge hugely for sparse files: a VM/container disk image
+    /// (Docker Desktop's `Docker.raw`, a QEMU `.img`, ...) can report a
+    /// multi-hundred-gigabyte apparent size while occupying a fraction of
+    /// that physically, which is exactly how a `st_size`-summing scan can
+    /// report more bytes than the volume itself holds. `st_blocks` is
+    /// always in 512-byte units regardless of the filesystem's own block
+    /// size — a POSIX convention, not an APFS-specific one — matching what
+    /// `du` itself reports.
+    private struct FileEntryStat {
+        let isDirectory: Bool
+        let isSymbolicLink: Bool
+        let realSizeBytes: UInt64
+        let linkCount: Int
+        let inode: UInt64
+        let device: UInt64
+    }
+
+    private static func statEntry(atPath path: String) -> FileEntryStat? {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return nil }
+        let fileType = info.st_mode & S_IFMT
+        return FileEntryStat(
+            isDirectory: fileType == S_IFDIR,
+            isSymbolicLink: fileType == S_IFLNK,
+            realSizeBytes: UInt64(info.st_blocks) * 512,
+            linkCount: Int(info.st_nlink),
+            inode: UInt64(info.st_ino),
+            device: UInt64(info.st_dev)
+        )
+    }
+
+    /// Whether `entry` describes a file this scan has already counted once
+    /// under a different name pointing at the same (volume, inode) — i.e.
+    /// a hard link. Summing real size once per directory *entry* rather
+    /// than once per physical file can still over-report when hard links
+    /// are involved (Photos Library, Mail, and Xcode.app's toolchain all
+    /// use them heavily) — `du` avoids this by tracking inodes it's
+    /// already counted, which this mirrors. Only files with more than one
+    /// link ever touch `accumulator`'s tracking set, so the common case
+    /// (an ordinary file with exactly one name) pays nothing beyond a
+    /// property read already sitting in `entry`.
+    private static func isDuplicateHardLink(_ entry: FileEntryStat, accumulator: DiskSpaceAccumulator) -> Bool {
+        guard entry.linkCount > 1 else { return false }
+        return !accumulator.isFirstSighting(device: entry.device, inode: entry.inode)
+    }
 
     private static func performScan(
         rootPath: String,
@@ -281,17 +357,19 @@ actor DiskSpaceScanner {
         let accumulator = DiskSpaceAccumulator(topListLimit: topListLimit)
 
         func reportProgress(currentPath: String?) {
+            let snapshot = accumulator.progressSnapshot()
             continuation.yield(.progress(DiskSpaceScanProgress(
-                itemsScanned: accumulator.itemsScanned,
-                bytesScanned: accumulator.totalBytes,
-                currentPath: currentPath
+                itemsScanned: snapshot.items,
+                bytesScanned: snapshot.bytes,
+                currentPath: currentPath,
+                categoryTotals: snapshot.categoryTotals
             )))
         }
         reportProgress(currentPath: rootPath)
 
         do {
-            _ = try scanDirectory(
-                atPath: rootPath,
+            try scanTopLevelInParallel(
+                rootPath: rootPath,
                 fileManager: fileManager,
                 token: token,
                 accumulator: accumulator,
@@ -302,9 +380,10 @@ actor DiskSpaceScanner {
             continuation.finish()
             return
         } catch {
-            // `scanDirectory` only ever throws `ScanCancelled` — this
-            // branch exists solely because Swift can't express "throws
-            // exactly one error type" in a function signature.
+            // Neither `scanTopLevelInParallel` nor `scanDirectory` throws
+            // anything but `ScanCancelled` — this branch exists solely
+            // because Swift can't express "throws exactly one error type"
+            // in a function signature.
             continuation.yield(.failed(error.localizedDescription))
             continuation.finish()
             return
@@ -316,12 +395,125 @@ actor DiskSpaceScanner {
             totalBytes: accumulator.totalBytes,
             totalItemCount: accumulator.itemsScanned,
             categoryTotals: accumulator.categoryTotals(),
-            largestFolders: accumulator.folderCollector.finalize(),
-            largestFiles: accumulator.fileCollector.finalize(),
+            largestFolders: accumulator.finalizeFolders(),
+            largestFiles: accumulator.finalizeFiles(),
             unreadableItemCount: accumulator.unreadableCount
         )
         continuation.yield(.completed(result))
         continuation.finish()
+    }
+
+    /// Fans `rootPath`'s immediate children out across up to
+    /// `maxWorkerCount` concurrent `OperationQueue` threads — each worker
+    /// takes full, exclusive ownership of one top-level child's entire
+    /// subtree and walks it with the same `scanDirectory` recursion used
+    /// before this type supported any concurrency at all, completely
+    /// unchanged. Only `DiskSpaceAccumulator` (now lock-protected — see
+    /// its own doc comment) and `CancellationToken` (already lock-protected
+    /// and already checked at every item, from the original single-threaded
+    /// design) are shared across those workers; nothing about the
+    /// cancellation mechanism itself is new, which is deliberate — a
+    /// second, worker-pool-specific cancel flag would risk exactly the
+    /// kind of "two flags, one of them not wired up" bug that made an
+    /// earlier parallel attempt at this fail to cancel reliably.
+    ///
+    /// Fanning out only at the top level (rather than at every directory
+    /// depth) means a scan root dominated by one giant top-level folder
+    /// sees less speedup than one with several similarly-sized siblings —
+    /// an accepted v1 tradeoff. The alternative (recursing into deeper
+    /// levels across workers too) would need each directory's bottom-up
+    /// `(sizeBytes, itemCount)` to be reassembled from children finishing
+    /// asynchronously on other threads, which is real complexity this
+    /// design avoids by keeping `scanDirectory`'s own recursion fully
+    /// synchronous and single-threaded within each worker.
+    private static func scanTopLevelInParallel(
+        rootPath: String,
+        fileManager: FileManager,
+        token: CancellationToken,
+        accumulator: DiskSpaceAccumulator,
+        reportProgress: @escaping (String?) -> Void
+    ) throws {
+        guard !token.isCancelled else { throw ScanCancelled() }
+
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: rootPath) else {
+            accumulator.recordUnreadable()
+            return
+        }
+
+        let workerCount = max(1, min(ProcessInfo.processInfo.activeProcessorCount, maxWorkerCount))
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = workerCount
+        queue.qualityOfService = .utility
+
+        for name in entries {
+            guard !token.isCancelled else { break }
+            let entryPath = "\(rootPath)/\(name)"
+
+            guard let entry = statEntry(atPath: entryPath) else {
+                accumulator.recordUnreadable()
+                continue
+            }
+
+            if entry.isSymbolicLink {
+                continue
+            }
+
+            if entry.isDirectory {
+                let ext = (name as NSString).pathExtension.lowercased()
+                if let bundleCategory = DiskSpaceFileCategory.bundleCategory(forExtension: ext) {
+                    queue.addOperation {
+                        guard !token.isCancelled else { return }
+                        // A fresh `FileManager` per operation — see the
+                        // matching comment on the plain-directory branch
+                        // below for why.
+                        let size = bundleSizeIgnoringErrors(atPath: entryPath, fileManager: FileManager(), token: token, accumulator: accumulator)
+                        accumulator.addFile(path: entryPath, sizeBytes: size, category: bundleCategory)
+                        reportProgress(entryPath)
+                    }
+                } else {
+                    queue.addOperation {
+                        guard !token.isCancelled else { return }
+                        do {
+                            // A fresh `FileManager` per operation rather
+                            // than sharing the one passed into this
+                            // function — simplest way to sidestep any
+                            // doubt about `FileManager`'s concurrent-use
+                            // guarantees (still needed here for
+                            // `contentsOfDirectory`) when several of these
+                            // run on different threads at once.
+                            let (size, count) = try scanDirectory(
+                                atPath: entryPath,
+                                fileManager: FileManager(),
+                                token: token,
+                                accumulator: accumulator,
+                                reportProgress: reportProgress
+                            )
+                            accumulator.addFolder(path: entryPath, sizeBytes: size, itemCount: count)
+                        } catch {
+                            // `scanDirectory` only ever throws
+                            // `ScanCancelled`, which just means this
+                            // subtree stopped early — `token.isCancelled`
+                            // is checked once after every worker finishes,
+                            // below, as the single source of truth for
+                            // whether the whole scan was cancelled.
+                        }
+                    }
+                }
+            } else if !isDuplicateHardLink(entry, accumulator: accumulator) {
+                let category = DiskSpaceFileCategory.classify(fileName: name)
+                accumulator.addFile(path: entryPath, sizeBytes: entry.realSizeBytes, category: category)
+            }
+        }
+
+        // Safe to block this thread: `performScan` already runs on its own
+        // dedicated `DispatchQueue.global` thread, off the cooperative
+        // pool, specifically so slow synchronous I/O like this is fine —
+        // see `scan(rootPath:)`'s own doc comment.
+        queue.waitUntilAllOperationsAreFinished()
+
+        if token.isCancelled {
+            throw ScanCancelled()
+        }
     }
 
     /// Recurses `path`'s children, folding every plain file (and every
@@ -348,7 +540,7 @@ actor DiskSpaceScanner {
         guard !token.isCancelled else { throw ScanCancelled() }
 
         guard let entries = try? fileManager.contentsOfDirectory(atPath: path) else {
-            accumulator.unreadableCount += 1
+            accumulator.recordUnreadable()
             return (0, 0)
         }
 
@@ -359,20 +551,19 @@ actor DiskSpaceScanner {
             guard !token.isCancelled else { throw ScanCancelled() }
             let entryPath = "\(path)/\(name)"
 
-            guard let attributes = try? fileManager.attributesOfItem(atPath: entryPath) else {
-                accumulator.unreadableCount += 1
-                continue
-            }
-            let fileType = attributes[.type] as? FileAttributeType
-
-            if fileType == .typeSymbolicLink {
+            guard let entry = statEntry(atPath: entryPath) else {
+                accumulator.recordUnreadable()
                 continue
             }
 
-            if fileType == .typeDirectory {
+            if entry.isSymbolicLink {
+                continue
+            }
+
+            if entry.isDirectory {
                 let ext = (name as NSString).pathExtension.lowercased()
                 if let bundleCategory = DiskSpaceFileCategory.bundleCategory(forExtension: ext) {
-                    let size = bundleSizeIgnoringErrors(atPath: entryPath, fileManager: fileManager, token: token)
+                    let size = bundleSizeIgnoringErrors(atPath: entryPath, fileManager: fileManager, token: token, accumulator: accumulator)
                     accumulator.addFile(path: entryPath, sizeBytes: size, category: bundleCategory)
                     directorySize += size
                     directoryItemCount += 1
@@ -388,11 +579,10 @@ actor DiskSpaceScanner {
                     directorySize += childSize
                     directoryItemCount += childCount
                 }
-            } else {
-                let sizeBytes = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+            } else if !isDuplicateHardLink(entry, accumulator: accumulator) {
                 let category = DiskSpaceFileCategory.classify(fileName: name)
-                accumulator.addFile(path: entryPath, sizeBytes: sizeBytes, category: category)
-                directorySize += sizeBytes
+                accumulator.addFile(path: entryPath, sizeBytes: entry.realSizeBytes, category: category)
+                directorySize += entry.realSizeBytes
                 directoryItemCount += 1
             }
 
@@ -404,26 +594,35 @@ actor DiskSpaceScanner {
         return (directorySize, directoryItemCount)
     }
 
-    /// Sums a bundle directory's (`.app`, `.framework`, ...) total size
-    /// without touching `accumulator` — nothing inside a bundle should
-    /// show up in the category breakdown or largest-files/folders lists
-    /// as its own entry (see `scanDirectory`'s bundle branch above). Still
-    /// checks `token` between directories so cancelling mid-scan doesn't
-    /// have to wait out one giant bundle (Xcode.app, ...) first.
-    private static func bundleSizeIgnoringErrors(atPath path: String, fileManager: FileManager, token: CancellationToken) -> UInt64 {
+    /// Sums a bundle directory's (`.app`, `.framework`, ...) total size.
+    /// Doesn't add anything to `accumulator`'s category breakdown or
+    /// largest-files/folders lists — nothing inside a bundle should show
+    /// up as its own entry there (see `scanDirectory`'s bundle branch
+    /// above) — but does still consult `accumulator`'s hard-link tracking,
+    /// since a bundle's own internal toolchain (Xcode.app's platform SDKs
+    /// are the extreme case) can hard-link the same file under many
+    /// internal names, and without dedup a single bundle can already
+    /// report a wildly inflated size on its own. Still checks `token`
+    /// between directories so cancelling mid-scan doesn't have to wait out
+    /// one giant bundle first.
+    private static func bundleSizeIgnoringErrors(
+        atPath path: String,
+        fileManager: FileManager,
+        token: CancellationToken,
+        accumulator: DiskSpaceAccumulator
+    ) -> UInt64 {
         guard !token.isCancelled else { return 0 }
         guard let entries = try? fileManager.contentsOfDirectory(atPath: path) else { return 0 }
         var total: UInt64 = 0
         for name in entries {
             guard !token.isCancelled else { break }
             let entryPath = "\(path)/\(name)"
-            guard let attributes = try? fileManager.attributesOfItem(atPath: entryPath) else { continue }
-            let fileType = attributes[.type] as? FileAttributeType
-            if fileType == .typeSymbolicLink { continue }
-            if fileType == .typeDirectory {
-                total += bundleSizeIgnoringErrors(atPath: entryPath, fileManager: fileManager, token: token)
-            } else {
-                total += (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+            guard let entry = statEntry(atPath: entryPath) else { continue }
+            if entry.isSymbolicLink { continue }
+            if entry.isDirectory {
+                total += bundleSizeIgnoringErrors(atPath: entryPath, fileManager: fileManager, token: token, accumulator: accumulator)
+            } else if !isDuplicateHardLink(entry, accumulator: accumulator) {
+                total += entry.realSizeBytes
             }
         }
         return total
@@ -438,46 +637,122 @@ actor DiskSpaceScanner {
 /// every recursive call it makes always see the same, live, up-to-date
 /// counts rather than risking a stale copy from Swift's normal
 /// copy-in/copy-out `inout` semantics.
-private final class DiskSpaceAccumulator {
-    private(set) var totalBytes: UInt64 = 0
-    private(set) var itemsScanned = 0
-    var unreadableCount = 0
-    // `var`, not `let`: `TopSizeCollector.insert`/`finalize` are `mutating`
-    // methods, which need a mutable property even though `self` here is a
-    // class (mutating `self`'s own stored properties never requires the
-    // property itself, only the *method*, to be non-`let`).
-    var folderCollector: TopSizeCollector<DiskSpaceFolderEntry>
-    var fileCollector: TopSizeCollector<DiskSpaceFileEntry>
+///
+/// One instance is now shared across every `scanTopLevelInParallel`
+/// worker thread at once (each owns a disjoint subtree, but all of them
+/// fold their results into this same accumulator), so every mutation and
+/// every read goes through `lock` — `@unchecked Sendable` for the same
+/// reason `CancellationToken`/`TokenBox` below are: the compiler can't
+/// verify a hand-rolled lock, but every stored property actually is only
+/// ever touched while holding it.
+private final class DiskSpaceAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
 
+    private var _totalBytes: UInt64 = 0
+    private var _itemsScanned = 0
+    private var _unreadableCount = 0
+    private var folderCollector: TopSizeCollector<DiskSpaceFolderEntry>
+    private var fileCollector: TopSizeCollector<DiskSpaceFileEntry>
     private var categoryBytes: [DiskSpaceFileCategory: UInt64] = [:]
     private var categoryCounts: [DiskSpaceFileCategory: Int] = [:]
+    /// (device, inode) pairs already counted for a multiply-linked file —
+    /// see `DiskSpaceScanner.isDuplicateHardLink`. Only files with more
+    /// than one hard link are ever inserted, so this stays far smaller
+    /// than the total item count on an ordinary volume.
+    private var seenHardLinks: Set<HardLinkID> = []
+
+    private struct HardLinkID: Hashable {
+        let device: UInt64
+        let inode: UInt64
+    }
 
     init(topListLimit: Int) {
         folderCollector = TopSizeCollector(limit: topListLimit)
         fileCollector = TopSizeCollector(limit: topListLimit)
     }
 
+    var totalBytes: UInt64 {
+        lock.lock(); defer { lock.unlock() }
+        return _totalBytes
+    }
+
+    var itemsScanned: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _itemsScanned
+    }
+
+    var unreadableCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _unreadableCount
+    }
+
+    func recordUnreadable() {
+        lock.lock()
+        _unreadableCount += 1
+        lock.unlock()
+    }
+
+    /// Records this (device, inode) pair as counted, returning `true` the
+    /// first time it's seen (caller should count the file) and `false` on
+    /// every later call for the same pair (caller should skip it — it's a
+    /// hard link to a file already counted under a different name).
+    func isFirstSighting(device: UInt64, inode: UInt64) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return seenHardLinks.insert(HardLinkID(device: device, inode: inode)).inserted
+    }
+
     func addFile(path: String, sizeBytes: UInt64, category: DiskSpaceFileCategory) {
-        totalBytes += sizeBytes
-        itemsScanned += 1
+        lock.lock()
+        _totalBytes += sizeBytes
+        _itemsScanned += 1
         categoryBytes[category, default: 0] += sizeBytes
         categoryCounts[category, default: 0] += 1
         fileCollector.insert(size: sizeBytes, value: DiskSpaceFileEntry(path: path, sizeBytes: sizeBytes, category: category))
+        lock.unlock()
     }
 
     func addFolder(path: String, sizeBytes: UInt64, itemCount: Int) {
+        lock.lock()
         folderCollector.insert(size: sizeBytes, value: DiskSpaceFolderEntry(path: path, sizeBytes: sizeBytes, itemCount: itemCount))
+        lock.unlock()
     }
 
     /// Every `DiskSpaceFileCategory` in its own `allCases` (legend) order,
     /// zero-sized entries included — see `DiskSpaceScanResult
     /// .categoryTotals`'s own doc comment.
     func categoryTotals() -> [DiskSpaceCategoryTotal] {
+        lock.lock(); defer { lock.unlock() }
+        return Self.categoryTotalsLocked(bytes: categoryBytes, counts: categoryCounts)
+    }
+
+    /// One locked read of everything a `.progress` tick needs, so a
+    /// concurrent writer's file can never be observed split across two
+    /// separate lock acquisitions (its bytes counted but its category not
+    /// yet, or vice versa).
+    func progressSnapshot() -> (items: Int, bytes: UInt64, categoryTotals: [DiskSpaceCategoryTotal]) {
+        lock.lock(); defer { lock.unlock() }
+        return (_itemsScanned, _totalBytes, Self.categoryTotalsLocked(bytes: categoryBytes, counts: categoryCounts))
+    }
+
+    func finalizeFolders() -> [DiskSpaceFolderEntry] {
+        lock.lock(); defer { lock.unlock() }
+        return folderCollector.finalize()
+    }
+
+    func finalizeFiles() -> [DiskSpaceFileEntry] {
+        lock.lock(); defer { lock.unlock() }
+        return fileCollector.finalize()
+    }
+
+    private static func categoryTotalsLocked(
+        bytes: [DiskSpaceFileCategory: UInt64],
+        counts: [DiskSpaceFileCategory: Int]
+    ) -> [DiskSpaceCategoryTotal] {
         DiskSpaceFileCategory.allCases.map { category in
             DiskSpaceCategoryTotal(
                 category: category,
-                sizeBytes: categoryBytes[category] ?? 0,
-                itemCount: categoryCounts[category] ?? 0
+                sizeBytes: bytes[category] ?? 0,
+                itemCount: counts[category] ?? 0
             )
         }
     }
