@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// Connections page — PLAN.md §1.1 "Connections" (a former [name removed] Pro page,
-/// unlocked here per §2) / §4 M6's second task: "stat tiles, filter chips,
+/// Connections page — PLAN.md §1.1 "Connections" (unlocked here with no
+/// paywall, per §2) / §4 M6's second task: "stat tiles, filter chips,
 /// per-process socket table (proc_pidfdinfo, lsof fallback), exposure
 /// classification (loopback/LAN/Internet), detail panel."
 ///
 /// Layout follows PLAN.md's own inventory top to bottom: a status line,
 /// this M3-style `StatTile` row (open sockets / listening ports / public
 /// endpoints / processes with sockets / a live system-traffic sparkline),
-/// a segmented filter control standing in for [name removed]'s "All/Connected/
-/// Listening/Public/UDP/Local IPC" filter chips (PLAN.md §2's own
-/// native-restyle rule: keep the *information design*, not [name removed]'s literal
+/// a segmented filter control standing in for an "All/Connected/
+/// Listening/Public/UDP/Local IPC" filter chip row (PLAN.md §2's own
+/// native-restyle rule: keep the *information design*, not a literal
 /// chip widget — a segmented control is the native macOS translation of a
 /// single-choice filter row, the same role Mail/Photos use one for), the
 /// socket table, and — per PLAN.md's own "right detail panel" phrasing for

@@ -1,25 +1,25 @@
 import AppKit
 import SwiftUI
 
-/// Benchmarks page — PLAN.md §1.1 "Benchmarks" (a former [name removed] Pro page,
-/// unlocked here per §2) / §4 M7's first task: "native progress during
+/// Benchmarks page — PLAN.md §1.1 "Benchmarks" (unlocked here with no
+/// paywall, per §2) / §4 M7's first task: "native progress during
 /// runs, large numeric results, history table."
 ///
 /// PLAN.md §2's design language spells out exactly what those two UI
-/// pieces replace: "Dropped from [name removed]: ... analog benchmark gauges
-/// (become native progress + large numeric results)." So each benchmark
+/// pieces are for: native progress plus large numeric results in place
+/// of an analog benchmark gauge. So each benchmark
 /// gets a plain card — icon, title, a Run/Cancel button, a system
 /// `ProgressView` while it's running, and its latest result as a big
 /// `.monospacedDigit()` number (the same headline-reading typography
 /// `SummaryPage`'s CPU Overview readout uses) once it has one — rather
-/// than [name removed]'s odometer-digit dial. Every completed run, across every
+/// than an odometer-digit dial. Every completed run, across every
 /// kind, also lands in a `DataTable` history list below the cards.
 ///
 /// PLAN.md §4 M7's third task — "Score page: aggregate score card,
 /// baseline constant, 'Run All'" — lives as this same page's second tab
-/// rather than its own sidebar row: [name removed]'s own sidebar inventory (§1.1)
-/// never lists a standalone "Score" entry, only "Benchmarks," with its
-/// "[name removed] Score page" described as part of that same section. The
+/// rather than its own sidebar row: the researched sidebar inventory
+/// (§1.1) never lists a standalone "Score" entry, only "Benchmarks," with
+/// a "Score page" described as part of that same section. The
 /// segmented `tabPicker` below switches between `.tests` (the card grid
 /// + history table described above) and `.score` (`ScoreCard` — one
 /// number folding every kind's latest result onto `BenchmarkBaseline`'s
@@ -797,8 +797,8 @@ final class BenchmarksViewModel: ObservableObject {
             // If this run was one step of a "Run All" sequence, start its
             // next queued kind now — however this run ended (completed,
             // failed, or cancelled): one bad/skipped test shouldn't abort
-            // the rest of the suite, the same reasoning [name removed]'s own
-            // Start-the-whole-suite behavior implies. A no-op when
+            // the rest of the suite, since a "run all" is expected to
+            // get through every test regardless. A no-op when
             // `runAllQueue` is `nil` (this was an ordinary single-kind
             // run, or `cancelRunAll()` already cleared the queue).
             self?.advanceRunAllQueue(context: context)

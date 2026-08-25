@@ -25,7 +25,7 @@ actor Sampler {
     enum Interval: Sendable, Equatable {
         /// ⌘1 — 4 samples/sec.
         case fast
-        /// ⌘2 — 2 samples/sec. Default, matching [name removed]'s "Normal".
+        /// ⌘2 — 2 samples/sec. Default "Normal" update speed.
         case normal
         /// ⌘3 — 1 sample/sec.
         case slow

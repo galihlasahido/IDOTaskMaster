@@ -44,8 +44,8 @@ final class SettingsStore: ObservableObject {
 
         var id: String { rawValue }
 
-        /// Label for Settings ▸ General and the View menu, matching
-        /// [name removed]'s "Normal — 2/sec" phrasing (PLAN.md §1.1).
+        /// Label for Settings ▸ General and the View menu, using a
+        /// "Normal — 2/sec" style phrasing (PLAN.md §1.1).
         var displayName: String {
             switch self {
             case .fast: "Fast — 4/sec"
@@ -67,9 +67,10 @@ final class SettingsStore: ObservableObject {
 
     /// Settings ▸ Appearance's "App theme" (PLAN.md §1.1: "App theme
     /// (system/light/dark)"). `AppShell`'s window applies this via
-    /// `.preferredColorScheme`; [name removed]'s Language/Display-font/Popout rows
-    /// in the same section aren't represented here — this app has no
-    /// bundled display font or localization to pick between (PLAN.md §2:
+    /// `.preferredColorScheme`; Language/Display-font/Popout rows seen
+    /// in some other apps' equivalent sections aren't represented here —
+    /// this app has no bundled display font or localization to pick
+    /// between (PLAN.md §2:
     /// "system font (SF Pro) everywhere ... No bundled display fonts";
     /// §4's Deferred/v2 list: "localization beyond scaffold") and no
     /// desktop-popout overlay feature at all.
@@ -221,9 +222,8 @@ final class SettingsStore: ObservableObject {
     }
 
     /// Settings ▸ Graphs' "Color Keyed Graphs" toggle (PLAN.md §1.1) —
-    /// distinct from [name removed]'s dropped mono/saturation "Colors" popover
-    /// (PLAN.md §2: "Dropped from [name removed]: ... saturation & mono 'Colors'
-    /// popover"); this is only about whether each series keeps its
+    /// there is no separate mono/saturation "Colors" popover in this app
+    /// (PLAN.md §2); this toggle is only about whether each series keeps its
     /// per-domain identity color (CPU blue, Memory green, ...) versus a
     /// single neutral trace. `true` (the default) matches every
     /// `HistoryGraph`/`CapacityBar` call site today, which already always
@@ -256,7 +256,7 @@ final class SettingsStore: ObservableObject {
     /// The multiplier `compressOlderHistory` uses when enabled — how many
     /// older samples' worth of horizontal space one compressed sample
     /// occupies, matching `HistoryGraph.HistoryCompression.multiplier`.
-    /// Defaults to `15`, [name removed]'s own default (`HistoryCompression.standard`
+    /// Defaults to `15` (`HistoryCompression.standard`
     /// quotes the same number from PLAN.md §1.1's "e.g. 15×").
     @Published var historyMultiplier: Double {
         didSet {

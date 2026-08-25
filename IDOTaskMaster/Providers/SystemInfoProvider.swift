@@ -46,14 +46,14 @@ struct SystemInfoItem: Sendable, Equatable, Identifiable {
 
 /// One of the catalog's three top-level sections — PLAN.md §4 M5's
 /// `SystemInfoProvider` scope, "Hardware/Network/Software" (a deliberately
-/// narrower set than §1.1's fuller [name removed] research inventory for this page,
+/// narrower set than §1.1's fuller research inventory for this page,
 /// which additionally splits Hardware into Memory/Audio/Bluetooth/Camera/
 /// Graphics/etc. sub-panes and Software into Applications/Extensions/
 /// Fonts/etc.; this app's own checklist item names exactly these three,
 /// each backed by one `system_profiler` data type, so that's what ships
 /// here — nothing about `SystemInfoCatalog`'s shape prevents a later
-/// milestone from appending more `SystemInfoCategory` entries for the
-/// finer [name removed] sub-panes without touching this provider's plumbing).
+/// milestone from appending more `SystemInfoCategory` entries for
+/// finer sub-panes without touching this provider's plumbing).
 struct SystemInfoCategory: Sendable, Equatable, Identifiable {
     let id: String
     let title: String

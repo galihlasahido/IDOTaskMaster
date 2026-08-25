@@ -8,7 +8,7 @@ import SwiftUI
 /// this view only supplies the tab content, not the window chrome around
 /// it, matching every native macOS preferences window.
 ///
-/// Five tabs mirror [name removed]'s own Settings sections from PLAN.md §1.1
+/// Five tabs mirror the researched Settings sections from PLAN.md §1.1
 /// (Appearance, Graphs, General, Updates, Window), each trimmed to what
 /// this milestone's tasks actually scope in. The first four cover M8's
 /// first task ("appearance, update speed ..., default start page, graph
@@ -135,9 +135,9 @@ private struct LabeledSlider: View {
 // MARK: - General
 
 /// PLAN.md §1.1's General section, scoped to this task's two items: update
-/// speed and default start page. ("show-in-reports" is a [name removed] per-metric
-/// toggle with no "reports" feature in this app to attach to, so it's
-/// dropped rather than faked.)
+/// speed and default start page. ("show-in-reports" is a per-metric
+/// toggle from the researched inventory with no "reports" feature in
+/// this app to attach to, so it's dropped rather than faked.)
 private struct GeneralSettingsTab: View {
     @EnvironmentObject private var settings: SettingsStore
 
@@ -220,9 +220,10 @@ private struct UpdatesSettingsTab: View {
 
 /// PLAN.md §1.1's Global-shortcut and Window-management rows — §4 M8's
 /// second task: "Global shortcut Ctrl+Shift+Esc (login item),
-/// always-on-top, hide-on-close with background collection." [name removed] shows
-/// these as top-level Settings rows rather than grouped under one of its
-/// four named sections; this app gives them their own tab instead of
+/// always-on-top, hide-on-close with background collection." The
+/// researched design shows these as top-level Settings rows rather than
+/// grouped under one of its four named sections; this app gives them
+/// their own tab instead of
 /// wedging them into General, since none of General's other rows
 /// (`updateSpeed`, `defaultStartPage`) are about the window or the app's
 /// lifecycle the way these four are.

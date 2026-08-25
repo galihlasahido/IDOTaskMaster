@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// History page — one of this app's own beyond-[name removed] additions (PLAN.md
-/// §2: "persistent history (SQLite, 24h/7d views)") / §4 M9's third task:
-/// "browse 24h / 7d charts per domain ('what spiked while I was away')."
-/// [name removed] itself keeps no history at all once a live graph's reading scrolls
-/// off-screen — this page is the browsing surface for `HistoryStore`, the
-/// M9 task before this one.
+/// History page — one of this app's own additions beyond the baseline
+/// feature set (PLAN.md §2: "persistent history (SQLite, 24h/7d views)")
+/// / §4 M9's third task: "browse 24h / 7d charts per domain ('what
+/// spiked while I was away')." Most comparable system monitors keep no
+/// history at all once a live graph's reading scrolls off-screen — this
+/// page is the browsing surface for `HistoryStore`, the M9 task before
+/// this one.
 ///
 /// Master-detail, matching `PerformancePage`'s own shape: a left rail of
 /// per-domain `StatTile`s (headline reading + sparkline over the selected

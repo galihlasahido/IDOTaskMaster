@@ -1,9 +1,9 @@
 # IDOTaskMaster
 
-A native macOS system monitor / task manager with **[name removed]'s feature depth**, presented in
-**Activity Monitor's native visual language** — SF Pro, standard controls, subtle
-filled-area graphs, correct light & dark appearance. No neon, no custom fonts, no
-"Pro" upsells: every page is unlocked.
+A native macOS system monitor / task manager with a deep, power-user feature set,
+presented in **Activity Monitor's native visual language** — SF Pro, standard controls,
+subtle filled-area graphs, correct light & dark appearance. No neon, no custom fonts,
+no upsells: every page is unlocked, free.
 
 Built with SwiftUI + AppKit interop + Canvas drawing, reading live metrics straight from
 `host_processor_info`, `vm_statistics64`, libproc, IOKit, and friends — no helper daemons,
@@ -28,7 +28,7 @@ no IPC. Providers that can't read a metric say **"Unavailable"** instead of gues
 - **Startup Apps** and **Services** — LaunchAgent/Daemon and `launchctl` listings with
   enable/disable and detail panes.
 
-**Power-user tools** ([name removed]'s Pro pages — free here, no license required)
+**Power-user tools** (free, no license required)
 - **Power & Freq** — an HWiNFO-style live sensor tree (Value/Min/Max) for CPU/GPU/SSD.
 - **Connections** — per-process socket table with exposure classification
   (loopback/LAN/Internet) and filter chips.
@@ -38,7 +38,7 @@ no IPC. Providers that can't read a metric say **"Unavailable"** instead of gues
 - **Benchmarks** — CPU (single/multi-core), GPU compute, Disk R/W, Internet down/up, plus
   an aggregate Score page with run history.
 
-**Beyond [name removed]**
+**Extras**
 - Menu bar extra with a live compact readout and popover mini-dashboard (keeps collecting
   with the main window closed).
 - Dock icon live graph.
@@ -116,14 +116,10 @@ IDOTaskMaster/
 └─ Theme/         # per-domain color tokens (macOS palette)
 ```
 
-See [`../PLAN.md`](../PLAN.md) for the full product/architecture write-up and the
-milestone-by-milestone progress checklist.
-
 ## Status
 
-Feature-complete through M10 (all monitoring pages, power-user tools, alerts, history,
-menu bar extra, and Dock icon are implemented). M11 (polish & release) is in progress —
-see `PLAN.md` §4 for the current checklist.
+Feature-complete: every monitoring page, power-user tool, alert/history system, menu bar
+extra, Dock icon, and the MCP server below are implemented.
 
 ## MCP Server
 

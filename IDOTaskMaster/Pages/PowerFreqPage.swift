@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Power & Freq page — PLAN.md §1.1 "Power & Freq" (a former [name removed] Pro page,
-/// unlocked here per §2) / §4 M6's first task: "sensor tree with Value/Min/
+/// Power & Freq page — PLAN.md §1.1 "Power & Freq" (unlocked here with
+/// no paywall, per §2) / §4 M6's first task: "sensor tree with Value/Min/
 /// Max from SMC + provider stats" — an HWiNFO-style live sensor panel.
 ///
 /// A native hierarchical `List` (SwiftUI's `List(_:children:)` initializer,

@@ -6,8 +6,9 @@ import UserNotifications
 /// `Core/AlertsEngine.swift` and §4 M9's first task: "user-defined
 /// threshold rules (CPU > x% for N min, memory pressure, low disk, low
 /// battery, new public listening port) → UserNotifications; rule editor
-/// UI." One of §2's "Beyond [name removed] (our own additions, M8–M10)" items —
-/// [name removed] itself has no alerting at all.
+/// UI." One of this app's own additions beyond the baseline feature set
+/// (PLAN.md §2, M8–M10) — most comparable system monitors have no
+/// alerting at all.
 ///
 /// Owned once, at the process's lifetime, the same way `AppDelegate` owns
 /// `menuBarStatus`/`dockIconRenderer` (M8): a watchdog is only useful if it

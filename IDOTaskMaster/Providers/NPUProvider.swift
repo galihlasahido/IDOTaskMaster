@@ -116,9 +116,9 @@ struct NPUSnapshot: Sendable, Equatable {
 /// that counter (public references to Apple Silicon power tooling disagree
 /// on the scale factor across SoC generations, and this app has hardware
 /// to verify exactly one), a per-core or per-workload utilization
-/// breakdown, or a "blocks powered" count in the literal sense of [name removed]'s
-/// screenshot copy (PLAN.md §1.1: "Apple Neural Engine blocks-powered
-/// state"). Converting the raw counter into invented watts or a percentage
+/// breakdown, or a literal "blocks powered" count (PLAN.md §1.1: "Apple
+/// Neural Engine blocks-powered state"). Converting the raw counter
+/// into invented watts or a percentage
 /// would be exactly the kind of guess PLAN.md's honest-degradation rule
 /// forbids, so `NPUSnapshot` stops at the honest boundary: presence, a raw
 /// (unconverted) energy-delta counter, and the binary active/idle signal

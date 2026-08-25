@@ -35,8 +35,8 @@ struct GPUSnapshot: Sendable, Equatable {
     /// `PerformanceStatistics["In use system memory"]`. On Apple silicon
     /// this is **not** dedicated video memory — there is none; it's a
     /// slice of the same unified physical RAM `MemoryProvider` already
-    /// accounts for — but it is the closest reading IOKit exposes to
-    /// [name removed]'s "VRAM/memory usage" panel (PLAN.md §1.1), so it's surfaced
+    /// accounts for — but it is the closest reading IOKit exposes to a
+    /// "VRAM/memory usage" figure (PLAN.md §1.1), so it's surfaced
     /// under that name with this disclaimer rather than omitted outright.
     let vramUsedBytes: UInt64?
     /// Bytes allocated to the accelerator's working set,

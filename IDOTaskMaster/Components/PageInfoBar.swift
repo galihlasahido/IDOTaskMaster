@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// Native replacement for [name removed]'s glowing instrument status bar — PLAN.md
+/// Native, plain-text bottom-of-page status bar — PLAN.md
 /// §4 M1's `PageInfoBar`, anchored to the bottom of every page
 /// (PLAN.md §3: `AppShell.swift # sidebar nav, page routing, bottom info
-/// bar`). [name removed]'s version (§1.1: "Bottom status bar: provider health
-/// ('1 provider degraded'), live process count, data 'Generation' counter,
-/// record indicator + timecode (00:00:00.00) on the right") is trimmed per
-/// §2's design decisions: the record light/timecode are dropped outright
-/// ("Dropped from [name removed]: ... record light/timecode"), and what remains
-/// stops being an instrument panel — "provider-health/generation info
-/// moves to a subtle line there" — so this renders as one quiet
-/// secondary-text line rather than a lit status strip.
+/// bar`). The original design brief (§1.1: "Bottom status bar: provider
+/// health ('1 provider degraded'), live process count, data 'Generation'
+/// counter, record indicator + timecode (00:00:00.00) on the right") is
+/// trimmed per §2's design decisions: the record light/timecode are
+/// dropped outright, and what remains stops being a lit instrument panel
+/// — "provider-health/generation info moves to a subtle line there" —
+/// so this renders as one quiet secondary-text line rather than a lit
+/// status strip.
 ///
 /// Pure like its `Components/` siblings (`StatTile`, `DetailPane`,
 /// `DataTable`, `CapacityBar`): it only knows how to lay out whatever

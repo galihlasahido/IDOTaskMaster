@@ -17,10 +17,10 @@ import SwiftUI
 ///
 /// Sidebar rows come from `SidebarPage` (this milestone,
 /// `Pages/SidebarPage.swift`), grouped into two `Section`s — an
-/// unlabeled top section and a "Tools" section — which is this app's
-/// neutral restyle of [name removed]'s "PRO" divider (PLAN.md §2: "the sidebar
-/// loses [name removed]'s 'PRO' divider — one flat nav list (or a neutral 'Tools'
-/// divider for the same visual rhythm)"). Every row routes to a real,
+/// unlabeled top section and a "Tools" section — a neutral divider in
+/// place of a branded "PRO" section header (PLAN.md §2: one flat nav
+/// list, or a neutral "Tools" divider for the same visual rhythm).
+/// Every row routes to a real,
 /// distinct page type (`Pages/*Page.swift`); M1 let each render a
 /// `PlaceholderPageView` body, and later milestones have been filling
 /// them in one at a time without touching this routing switch.
@@ -139,7 +139,7 @@ struct AppShell: View {
             .tag(page)
     }
 
-    /// [name removed]'s bottom-of-sidebar Settings entry (PLAN.md §1.1), reproduced
+    /// A bottom-of-sidebar Settings entry (PLAN.md §1.1), implemented
     /// as a plain button below the `List` rather than a row inside it —
     /// see this struct's doc comment for why Settings isn't a
     /// `SidebarPage` case. Opens the app's `Settings` scene the same way

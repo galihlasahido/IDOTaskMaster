@@ -4,9 +4,10 @@ import SwiftUI
 /// Menu bar live readout + popover mini-dashboard — PLAN.md §3's
 /// `MenuBarExtraView.swift # menu bar live readout + popover mini-dashboard`
 /// and §4 M8's third task: "compact live CPU/mem/network readout + popover
-/// mini-dashboard (works while main window is closed)". Also one of §2's
-/// "Beyond [name removed] (our own additions, M8–M10)" items — [name removed] itself has no
-/// menu bar presence at all.
+/// mini-dashboard (works while main window is closed)". Also one of this
+/// app's own additions beyond the baseline feature set (PLAN.md §2,
+/// M8–M10) — most comparable system monitors have no menu bar presence
+/// at all.
 ///
 /// "Works while main window is closed" is the one requirement this file
 /// can't satisfy on its own: `MenuBarStatusModel.start()` is called once

@@ -5,13 +5,13 @@ import SwiftUI
 /// These wrap AppKit's dynamic system colors (`NSColor.system*`), so every
 /// token automatically tracks the user's accent color, light/dark
 /// appearance, and increased-contrast accessibility setting the same way
-/// Activity Monitor's own UI does — no custom hex values, no [name removed]-style
-/// neon/glow (PLAN.md §2 "Design language").
+/// Activity Monitor's own UI does — no custom hex values, no neon/glow
+/// styling (PLAN.md §2 "Design language").
 ///
 /// Tokens are grouped by metric domain and, for domains that plot more
 /// than one series, by role within that domain (e.g. CPU user vs. system,
 /// Disk read vs. write) — matching Activity Monitor's own per-tab color
-/// conventions rather than [name removed]'s flat one-color-per-domain scheme
+/// conventions rather than a flat one-color-per-domain scheme
 /// (PLAN.md §2: "CPU system-blue/red for user/system like Activity
 /// Monitor, Memory green pressure graph, Network blue/red for in/out,
 /// Disk blue/red for read/write").

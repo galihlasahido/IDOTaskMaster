@@ -358,7 +358,7 @@ actor ProcessProvider: Provider {
     /// `isApplication` descendant found while walking a background
     /// subtree is excised out into its own `applications` root instead of
     /// staying nested — so an app spawned by a background launcher still
-    /// surfaces as its own Applications entry, matching [name removed]'s flat
+    /// surfaces as its own Applications entry, keeping a flat
     /// per-app grouping (PLAN.md §1.1: "Applications (17)").
     private static func buildForest(from readings: [pid_t: ProcessReading]) -> ProcessForest {
         var childrenOf: [pid_t: [pid_t]] = [:]

@@ -67,9 +67,9 @@ struct InstalledApp: Sendable, Equatable, Identifiable {
     /// "Developer Tools") — `nil` when the bundle declares no category.
     let categoryLabel: String?
     let executablePath: String?
-    /// `codesign -dv`'s leaf `Authority=` line — this app's closest
-    /// approximation of [name removed]'s "editor" (publisher) detail field. `nil`
-    /// for an unsigned or ad-hoc-signed bundle.
+    /// `codesign -dv`'s leaf `Authority=` line — used as a publisher/
+    /// editor detail field for the app. `nil` for an unsigned or
+    /// ad-hoc-signed bundle.
     let publisher: String?
     /// Recursive on-disk size of the whole bundle via `du -sk`, matching
     /// what Finder's own "Get Info" reports (allocated blocks, not raw

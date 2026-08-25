@@ -31,8 +31,8 @@ struct StatTile<Content: View>: View {
     /// SF Symbol name shown beside `title`, e.g. "cpu" or "memorychip".
     var systemImage: String
     /// Per-domain identity color (a `DomainPalette` token) tinting the
-    /// icon — the native, non-glowing replacement for [name removed]'s LED color
-    /// coding (PLAN.md §2).
+    /// icon — a native, non-glowing take on LED-style color coding
+    /// (PLAN.md §2).
     var color: Color
     /// The tile's big headline reading, e.g. "42%" or "128 MB/s". Already
     /// formatted by the caller — `StatTile` does no numeric formatting of

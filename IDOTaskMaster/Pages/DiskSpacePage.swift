@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Disk Space page — PLAN.md §1.1 "Disk Space" (a former [name removed] Pro page,
-/// unlocked here per §2) / §4 M6's fourth task: "async scanner with
+/// Disk Space page — PLAN.md §1.1 "Disk Space" (unlocked here with no
+/// paywall, per §2) / §4 M6's fourth task: "async scanner with
 /// progress, file-type classification, bubble view + type legend, largest
 /// folders/files, scan history."
 ///

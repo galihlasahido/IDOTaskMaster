@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Installed Apps page — PLAN.md §1.1 "Installed Apps" (a former [name removed] Pro
-/// page, unlocked here per §2) / §4 M6's third task: "/Applications scan,
+/// Installed Apps page — PLAN.md §1.1 "Installed Apps" (unlocked here
+/// with no paywall, per §2) / §4 M6's third task: "/Applications scan,
 /// sizes, bundle metadata, related-files finder, Uninstall (move to Trash +
 /// related files)." A `DataTable` (icon / Name / Version / Size / Category
 /// columns) over a `DetailPane` below the fold, the same table-over-detail

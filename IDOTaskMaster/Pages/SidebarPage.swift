@@ -4,14 +4,15 @@ import SwiftUI
 /// `AppShell.swift # sidebar nav, page routing` and §4 M1's "Native
 /// sidebar shell with all pages routed."
 ///
-/// Cases and order follow PLAN.md §1.1's [name removed] sidebar inventory
+/// Cases and order follow PLAN.md §1.1's researched sidebar inventory
 /// ("Summary, Performance, Processes, System Info, Startup apps, Users,
 /// Services — then a 'PRO' divider — Power & Freq, Connections,
 /// Installed Apps, Disk Space, Benchmarks") plus this app's own
-/// beyond-[name removed] additions from §2 ("menu bar extra ... persistent history
-/// ... per-process network traffic" → History, Alerts, Network Usage),
-/// placed in the architecture tree's §3 `Pages/` order (Network Usage
-/// grouped with the former-Pro tools rather than off on its own).
+/// additions beyond that baseline from §2 ("menu bar extra ... persistent
+/// history ... per-process network traffic" → History, Alerts, Network
+/// Usage), placed in the architecture tree's §3 `Pages/` order (Network
+/// Usage grouped with the formerly-paywalled tools rather than off on
+/// its own).
 ///
 /// Settings is intentionally not a case here — see `AppShell`'s doc
 /// comment on why it gets its own fixed sidebar footer instead of a row
@@ -98,13 +99,13 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
     }
 
     /// The two sidebar groups, split by PLAN.md §2's neutral "Tools"
-    /// divider — this app's flat-list, everything-unlocked restyle of
-    /// [name removed]'s "PRO" divider ("the sidebar loses [name removed]'s 'PRO' divider —
-    /// one flat nav list (or a neutral 'Tools' divider for the same
-    /// visual rhythm')"). `isToolsSection` pages are exactly [name removed]'s
-    /// former Pro pages (Power & Freq, Connections, Installed Apps, Disk
-    /// Space, Benchmarks) plus this app's own beyond-[name removed] additions that
-    /// belong in the same second group (History, Alerts, Network Usage).
+    /// divider — this app's flat-list, everything-unlocked take on a
+    /// branded "PRO" divider (one flat nav list, or a neutral "Tools"
+    /// divider for the same visual rhythm). `isToolsSection` pages are
+    /// exactly the formerly-paywalled pages (Power & Freq, Connections,
+    /// Installed Apps, Disk Space, Benchmarks) plus this app's own
+    /// additions beyond that baseline that belong in the same second
+    /// group (History, Alerts, Network Usage).
     var isToolsSection: Bool {
         switch self {
         case .powerFreq, .connections, .networkUsage, .installedApps, .diskSpace, .benchmarks, .history, .alerts:

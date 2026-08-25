@@ -14,7 +14,7 @@ import SwiftUI
 /// stream" is free to do so without any change to the shell itself. Every
 /// reading below either comes straight from a `Snapshot` field or is
 /// rendered as an explicit "Unavailable" — never guessed — per PLAN.md's
-/// honest-degradation rule; a handful of [name removed]-inventoried fields
+/// honest-degradation rule; a handful of researched candidate fields
 /// (CPU cache/virtualization, GPU clock/API versions, memory module
 /// speed/slots, disk response time/NVMe type, interface IPv4/IPv6, and the
 /// per-process energy ranking that needs M4's `ProcessProvider`) have no

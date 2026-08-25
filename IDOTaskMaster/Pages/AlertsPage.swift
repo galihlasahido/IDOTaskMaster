@@ -1,10 +1,10 @@
 import SwiftUI
 import UserNotifications
 
-/// Alerts page — one of this app's own beyond-[name removed] additions (PLAN.md
-/// §2: "alert/notification rules") / §4 M9's first task: "user-defined
-/// threshold rules ... → UserNotifications; rule editor UI." [name removed] itself
-/// has no alerting at all.
+/// Alerts page — one of this app's own additions beyond the baseline
+/// feature set (PLAN.md §2: "alert/notification rules") / §4 M9's first
+/// task: "user-defined threshold rules ... → UserNotifications; rule
+/// editor UI." Most comparable system monitors have no alerting at all.
 ///
 /// Reads and edits the single app-lifetime `AlertsEngine` instance handed
 /// down through the environment from `IDOTaskMasterApp` (the same

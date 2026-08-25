@@ -27,16 +27,16 @@ struct CapacityBarSegment: Identifiable {
     }
 }
 
-/// Native macOS usage/level bar — PLAN.md §2's replacement for [name removed]'s
-/// glowing LED segment strips and meter towers ("Meters: standard capacity
-/// bars / level indicators instead of LED segment strips"). A flat,
+/// Native macOS usage/level bar — PLAN.md §2's standard capacity bar /
+/// level indicator design ("Meters: standard capacity bars / level
+/// indicators instead of LED segment strips"). A flat,
 /// pill-shaped track with one or more solid-color fills; no bloom, no
 /// discrete lit segments.
 ///
 /// `HistoryGraph` is this component's sibling for *history over time*;
 /// `CapacityBar` is for *right now* — reused wherever a page shows a
-/// single current reading: Summary's compact CPU/Temp/GPU meters (native
-/// restyle of [name removed]'s vertical LED towers, §1.1, "with values below"),
+/// single current reading: Summary's compact CPU/Temp/GPU meters (a
+/// vertical layout with values shown below, §1.1, "with values below"),
 /// inline usage cells in process/disk tables, and standalone composite
 /// meters like Memory's App/Wired/Compressed breakdown.
 ///
@@ -55,8 +55,8 @@ struct CapacityBar: View {
     /// `.vertical`.
     var thickness: CGFloat = 8
     /// Text shown alongside the bar — trailing it when `.horizontal`,
-    /// below it when `.vertical` (matching [name removed]'s vertical meter towers,
-    /// which show their value below the tower per PLAN.md §1.1). `nil`
+    /// below it when `.vertical` (a vertical meter tower showing its
+    /// value below the tower, per PLAN.md §1.1). `nil`
     /// omits the label entirely, e.g. for a compact bar inside a table
     /// cell where the numeric value already has its own column.
     var valueLabel: String? = nil

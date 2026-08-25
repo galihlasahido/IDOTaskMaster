@@ -1,7 +1,7 @@
 import Foundation
 
-/// One runnable benchmark test — PLAN.md §1.1 "Benchmarks" (a former [name removed]
-/// Pro page, unlocked here per §2): "CPU (single/multi core), GPU
+/// One runnable benchmark test — PLAN.md §1.1 "Benchmarks" (unlocked
+/// here with no paywall, per §2): "CPU (single/multi core), GPU
 /// (compute/graphics), Disk (read/write, choose test folder), Internet
 /// (download/upload)." Case order is `BenchmarksPage`'s row order.
 ///
@@ -56,9 +56,9 @@ enum BenchmarkKind: String, CaseIterable, Identifiable, Codable, Sendable {
 }
 
 /// One headline number within a `BenchmarkResult` — PLAN.md §1.1's "large
-/// numeric results," the native replacement for [name removed]'s odometer-digit
-/// gauges (§2: "analog benchmark gauges (become native progress + large
-/// numeric results)"). A CPU/GPU compute run reports one metric ("Score");
+/// numeric results," shown as native progress plus large numeric results
+/// rather than a custom-drawn analog gauge (§2). A CPU/GPU compute run
+/// reports one metric ("Score");
 /// Disk and Internet report two (Read/Write, Download/Upload) — `label`
 /// and `unit` are per-metric rather than per-result so `BenchmarksPage` can
 /// lay out either shape without a kind-specific switch.
@@ -92,8 +92,8 @@ struct BenchmarkResult: Sendable, Equatable, Codable, Identifiable {
 }
 
 /// A live tick from an in-progress `BenchmarkRunner.run(context:)` —
-/// PLAN.md §4 M7's "native progress during runs," the replacement for
-/// [name removed]'s analog gauge needle.
+/// PLAN.md §4 M7's "native progress during runs," shown via a native
+/// progress indicator rather than an animated gauge needle.
 ///
 /// Unlike `DiskSpaceScanProgress` (which can never know a folder's total
 /// item count up front and so stays permanently indeterminate),

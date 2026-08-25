@@ -6,7 +6,7 @@ import Foundation
 /// Memory) — top 12 of N, rows tinted by usage" and §4 M3's third task.
 ///
 /// A deliberately narrow slice of what a process can report: just the four
-/// [name removed] columns this one table needs. M4's `ProcessProvider` (PLAN.md §3
+/// columns this one table needs. M4's `ProcessProvider` (PLAN.md §3
 /// `Providers/ProcessProvider.swift`, §4 M4) is the real, full-fidelity
 /// process domain — the complete Applications/Background tree with
 /// per-pid identity/lifetime/threads/disk-io for the Processes and Users

@@ -4,9 +4,10 @@ import SQLite3
 /// Downsampled, pruned SQLite persistence of every domain's live history —
 /// PLAN.md §3's `Core/HistoryStore.swift "SQLite persistence, 24h/7d
 /// queries, pruning"` and §4 M9's second task: "downsampled SQLite
-/// persistence of all domains; pruning policy." One of §2's "Beyond [name removed]
-/// (our own additions, M8–M10)" items — [name removed] itself keeps no history at
-/// all once a live graph's reading scrolls off-screen.
+/// persistence of all domains; pruning policy." One of this app's own
+/// additions beyond the baseline feature set (PLAN.md §2, M8–M10) —
+/// most comparable system monitors keep no history at all once a live
+/// graph's reading scrolls off-screen.
 ///
 /// Owned once, at the process's lifetime, the same way `AppDelegate` owns
 /// `alertsEngine`/`menuBarStatus` (M8/M9): history is only useful if it

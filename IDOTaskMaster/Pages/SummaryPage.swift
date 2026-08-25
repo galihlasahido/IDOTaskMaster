@@ -3,7 +3,7 @@ import SwiftUI
 /// Summary dashboard — PLAN.md §1.1 "Summary (dashboard)" / §4 M3.
 ///
 /// M3's first task fills in the left-hand compact CPU/Temp/GPU capacity
-/// bars — this app's native restyle of [name removed]'s vertical LED meter towers
+/// bars — a native vertical meter-tower layout
 /// ("four vertical LED bar meters — CPU %, Clock (Auto), Temp °C, GPU % —
 /// with values below", PLAN.md §1.1). Clock is dropped: no provider
 /// exposes a live CPU clock speed reading (`CPUProvider`'s `CPUTopology`
@@ -179,12 +179,12 @@ struct SummaryPage: View {
     /// PLAN.md §1.1 Summary "Center: CPU Overview card — tabs for
     /// Utilization / Temperature / Kernel, big % readout, multi-series
     /// scrolling graph ... '14 logical processors', 'Speed Apple
-    /// managed'". Rather than [name removed]'s one fixed three-series/dual-axis
+    /// managed'". Rather than one fixed three-series/dual-axis
     /// graph, a segmented `Picker` — the same pattern
     /// `PerformancePage`'s GPU detail uses for its Overall/Engines tabs —
     /// switches both the big readout and the single-series graph beneath
     /// it between the three metrics; PLAN.md §2 keeps this app's *subtle*
-    /// per-domain color identity rather than [name removed]'s overlaid multi-trace
+    /// per-domain color identity rather than an overlaid multi-trace
     /// instrument panel, and one series at a time reads more clearly on a
     /// native, non-glowing graph than three overlapping traces on
     /// mismatched axes would.
@@ -302,7 +302,7 @@ struct SummaryPage: View {
     /// same `DataTable` every other list page uses. "Rows tinted by
     /// usage" is restyled per PLAN.md §2 as a `CapacityBar.statusColor`
     /// tint on the CPU % cell's text — this app's native, non-neon
-    /// stand-in for [name removed]'s glowing row highlight, reusing the same
+    /// take on a glowing row highlight, reusing the same
     /// healthy/warning/critical thresholds every other status-tinted
     /// reading in the app already uses rather than inventing a one-off
     /// color rule just for this table.
@@ -720,13 +720,13 @@ struct SummaryPage: View {
 
 // MARK: - Compact meter tower
 
-/// One vertical LED-tower-shaped meter — [name removed]'s "CPU %", "Temp °C", "GPU
+/// One vertical LED-tower-shaped meter — the "CPU %", "Temp °C", "GPU
 /// %" columns (PLAN.md §1.1), restyled per PLAN.md §2 as a native
 /// `CapacityBar` in its `.vertical` orientation instead of a glowing
 /// segmented strip. A domain icon sits above the bar, the bar's own
 /// `valueLabel` prints the current reading below it (matching
-/// `CapacityBar`'s documented vertical convention — "value below" — which
-/// is itself [name removed]'s own layout), and a small caption names the domain
+/// `CapacityBar`'s documented vertical convention — "value below"),
+/// and a small caption names the domain
 /// underneath that, so the tower reads top-to-bottom as icon → bar →
 /// value → name without needing a title above the bar to compete with the
 /// icon.
@@ -807,8 +807,8 @@ enum CPUOverviewTab: String, CaseIterable, Identifiable {
         }
     }
 
-    /// [name removed]'s own utilization/temp/kernel graph colors are green/amber/red
-    /// (PLAN.md §1.1); reusing `DomainPalette`'s existing CPU/Thermal
+    /// The researched utilization/temp/kernel graph colors are
+    /// green/amber/red (PLAN.md §1.1); reusing `DomainPalette`'s existing CPU/Thermal
     /// tokens keeps the same red-for-kernel, warm-for-temperature identity
     /// while staying inside this app's native palette (PLAN.md §2)
     /// instead of introducing a one-off green token no other CPU view

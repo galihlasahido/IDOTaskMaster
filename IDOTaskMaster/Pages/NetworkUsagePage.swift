@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Network Usage page — one of this app's own beyond-[name removed] additions
-/// (PLAN.md §2: "per-process network traffic") / §4 M9's fourth task:
+/// Network Usage page — one of this app's own additions beyond the
+/// baseline feature set (PLAN.md §2: "per-process network traffic") /
+/// §4 M9's fourth task:
 /// "`NetTrafficProvider` + Network Usage page: per-process send/receive
 /// rates (nettop-style), sortable, with totals."
 ///

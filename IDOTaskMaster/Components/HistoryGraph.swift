@@ -41,7 +41,7 @@ struct HistoryGraphSeries: Identifiable {
 /// Monitor-style filled area charts)"). Renders one or more
 /// `HistoryGraphSeries` over a light horizontal grid with a thin stroke and
 /// a soft gradient fill — no glow/bloom, matching the native look PLAN.md
-/// §2 calls for instead of [name removed]'s phosphor traces.
+/// §2 calls for rather than a glowing phosphor-trace style.
 ///
 /// Pure and stateless: it only knows how to lay out whatever samples it is
 /// given across its available width. Anything about *where* those samples
@@ -69,7 +69,7 @@ struct HistoryGraph: View {
         /// compression" (the linear layout is used).
         var multiplier: Double
 
-        /// [name removed]'s own default, quoted in PLAN.md §1.1.
+        /// The default multiplier and window quoted in PLAN.md §1.1.
         static let standard = HistoryCompression(recentWindow: 60, multiplier: 15)
     }
 

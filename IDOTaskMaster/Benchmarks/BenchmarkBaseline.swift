@@ -1,8 +1,8 @@
 import Foundation
 
-/// The fixed reference point PLAN.md §1.1's [name removed] description calls out for
-/// its own Score page — "aggregate of all benchmark results, baselined to
-/// a reference machine, versioned comparisons." Every `BenchmarkMetric`
+/// The fixed reference point PLAN.md §1.1 calls out for the Score page —
+/// "aggregate of all benchmark results, baselined to a reference machine,
+/// versioned comparisons." Every `BenchmarkMetric`
 /// this app's own runners produce is unit-different (pts, GFLOPS, GB/s,
 /// MB/s, Mbps) and, per e.g. `CPUBenchmarkRunner`'s own doc comment, only
 /// self-consistent on *this* Mac — "not calibrated against any published
