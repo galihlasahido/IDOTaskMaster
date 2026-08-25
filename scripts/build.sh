@@ -21,7 +21,17 @@ xcodebuild \
   build
 
 if [ "$CONFIG" = "Release" ]; then
-  echo "==> Build succeeded: $(release_app_path)"
+  APP_PATH="$(release_app_path)"
 else
-  echo "==> Build succeeded: $(debug_app_path)"
+  APP_PATH="$(debug_app_path)"
 fi
+
+# See sign_adhoc's own doc comment: the linker's own ad-hoc signature
+# from the build above binds the wrong identifier, which silently
+# breaks notifications (and possibly other identity-checked APIs) —
+# fully re-sign so this build behaves like a real one, not just a
+# "does it compile" check.
+echo "==> Re-signing (ad-hoc)"
+sign_adhoc "$APP_PATH"
+
+echo "==> Build succeeded: $APP_PATH"

@@ -33,6 +33,15 @@ xcodebuild \
   "${SIGN_ARGS[@]}" \
   build
 
+# Only for the ad-hoc path: a real DEVELOPMENT_TEAM build above already
+# gets a proper Developer ID signature from Xcode itself. See
+# sign_adhoc's own doc comment for why the ad-hoc path otherwise ships
+# with a signature that silently breaks notifications.
+if [ -z "${DEVELOPMENT_TEAM:-}" ]; then
+  echo "==> Re-signing (ad-hoc)"
+  sign_adhoc "$(release_app_path)"
+fi
+
 mkdir -p "$DIST_DIR"
 rm -rf "$DIST_DIR/$APP_NAME.app"
 cp -R "$(release_app_path)" "$DIST_DIR/$APP_NAME.app"

@@ -44,3 +44,24 @@ relaunch_app() {
   sleep 0.5
   open "$app_path"
 }
+
+# Re-signs an already-built .app with a full ad-hoc signature that
+# properly seals Info.plist and its resources.
+#
+# A plain `CODE_SIGNING_ALLOWED=NO` xcodebuild still produces *some*
+# signature on Apple Silicon (arm64 binaries must have one to run at
+# all) — but it's the linker's own bare-minimum ad-hoc signature, which
+# only covers the executable and, critically, binds the *executable's
+# name* as the signed identifier instead of the real CFBundleIdentifier
+# (`com.idotaskmaster.mac`). That mismatch silently breaks anything that
+# checks the app's signed identity — most notably
+# `UNUserNotificationCenter`: `requestAuthorization` throws
+# `UNErrorDomain Code=1` ("Notifications are not allowed for this
+# application") forever, with no permission prompt ever shown, because
+# the system can't verify which app is actually asking. This full
+# `--deep --sign -` re-sign fixes that by sealing the whole bundle
+# (Info.plist included) under its real identifier.
+sign_adhoc() {
+  local app_path="$1"
+  codesign --force --deep --sign - "$app_path"
+}
