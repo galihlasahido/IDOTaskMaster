@@ -124,3 +124,71 @@ milestone-by-milestone progress checklist.
 Feature-complete through M10 (all monitoring pages, power-user tools, alerts, history,
 menu bar extra, and Dock icon are implemented). M11 (polish & release) is in progress —
 see `PLAN.md` §4 for the current checklist.
+
+## MCP Server
+
+`IDOTaskMasterMCP` is a second, standalone command-line target — a
+[Model Context Protocol](https://modelcontextprotocol.io) **server** that lets an AI
+assistant (Claude Code, Claude Desktop, or any MCP client) query this Mac's live
+system-monitoring data over stdio, the same data the GUI app collects. It reuses
+`Core/`/`Providers/` directly (xcodegen compiles those same source folders into both
+targets — see `project.yml`), so its readings come from the exact same
+`host_processor_info`/`vm_statistics64`/IOKit/libproc code paths as the GUI app, not a
+reimplementation.
+
+**Read-only, full stop.** Every tool below maps to a `sample()`/query call — never a
+write method. Nothing here can kill/suspend/renice a process, run a benchmark, toggle a
+startup item, uninstall an app, or otherwise change anything on this Mac.
+
+**Tools**
+
+| Tool | What it returns |
+|---|---|
+| `get_summary` | One-shot CPU/memory/GPU/disk/network/energy/thermal/NPU snapshot + process count |
+| `list_processes` | Every running process (name/user filter, limit) |
+| `get_top_processes` | Summary dashboard's "Top CPU processes" table |
+| `get_process_detail` | One PID's full detail + code-signing status + open files/sockets |
+| `get_system_info` | Hardware/Network/Software catalog (`system_profiler`-backed) |
+| `list_startup_items` | LaunchAgents/LaunchDaemons on disk + live launchctl state |
+| `list_services` | Every job `launchctl print` currently knows about |
+| `list_connections` | Per-process open sockets, with loopback/LAN/internet exposure |
+| `list_installed_apps` | `/Applications` scan: name, version, publisher, size |
+| `list_history_series` | Which (domain, key) time series this Mac has recorded |
+| `query_history` | 24h/7d history for one (domain, key) pair |
+| `list_alert_rules` | The GUI app's configured alert rules (not fired-alert history) |
+
+`list_history_series`/`query_history` read the same
+`~/Library/Application Support/IDOTaskMaster/History.sqlite` file the GUI app's own
+history recorder writes to (they only query it — never `.start()` a second recorder
+against it), so they return real data only once the GUI app has run at least once.
+Likewise `list_alert_rules` reads the GUI app's own `UserDefaults`-persisted rules.
+
+**Building**
+
+```sh
+scripts/build-mcp.sh            # Debug (default)
+scripts/build-mcp.sh Release
+```
+
+Produces a plain executable at `.build/Build/Products/<Debug|Release>/IDOTaskMasterMCP`
+(no app bundle — it's a command-line tool, not a GUI target).
+
+**Registering with an MCP client**
+
+For Claude Code, from this repo (adjust the path to wherever you built the binary):
+
+```sh
+claude mcp add idotaskmaster -- /absolute/path/to/IDOTaskMasterMCP
+```
+
+For Claude Desktop or any other MCP client that reads a JSON config, add an entry like:
+
+```json
+{
+  "mcpServers": {
+    "idotaskmaster": {
+      "command": "/absolute/path/to/IDOTaskMasterMCP"
+    }
+  }
+}
+```

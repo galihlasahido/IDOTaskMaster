@@ -19,7 +19,9 @@ xcuserdata/
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
+# Package.resolved IS committed (below) for reproducible dependency
+# versions — only ignore the working copies SPM checks out under .build/,
+# already covered by the .build/ rule above.
 
 # Archives & artifacts
 *.ipa
