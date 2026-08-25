@@ -168,6 +168,19 @@ struct BenchmarksPage: View {
             cardRow(Self.otherCardRow)
         }
         .padding(10)
+        // Each card inside `cardRow` opts into `maxHeight: .infinity` so
+        // its background stretches to match its row's tallest sibling —
+        // but with no cap, that same "I'll take all the height you give
+        // me" behavior also let this whole section balloon to fill
+        // whatever leftover space `historySection`'s own flexible `List`
+        // wasn't already claiming, leaving a wide dead gap below each
+        // card's caption line and before the history table. `.fixedSize
+        // (vertical: true)` clamps the *reported* height back down to
+        // what the content actually wants — the per-card cross-row
+        // matching above still works (it's resolved while computing that
+        // ideal size), only the "then also eat the page's slack" part is
+        // undone.
+        .fixedSize(horizontal: false, vertical: true)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
