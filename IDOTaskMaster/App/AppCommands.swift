@@ -60,8 +60,50 @@ struct AppCommands: Commands {
                     .disabled(true)
             }
 
+            // M8's fourth task (PLAN.md §4: "Dock icon live graph (View →
+            // Dock Icon: CPU history etc., like Activity Monitor)").
+            // Checkmarked, mutually-exclusive `Toggle`s over
+            // `settings.dockIconMode` — same radio-style pattern as Update
+            // Frequency above, so picking one here and picking one in a
+            // future Settings tab (if ever added) stay in sync through the
+            // one store, just like `updateSpeed`. `DockIconRenderer`
+            // observes `settings.$dockIconMode` and redraws the actual
+            // Dock icon; this menu only ever writes the preference.
+            Menu("Dock Icon") {
+                dockIconToggle(.applicationIcon)
+                Divider()
+                dockIconToggle(.cpuUsage)
+                dockIconToggle(.cpuHistory)
+                Divider()
+                dockIconToggle(.memoryUsage)
+                dockIconToggle(.memoryHistory)
+            }
+
             Divider()
         }
+    }
+
+    /// One "Dock Icon" row — a checkmarked, mutually-exclusive `Toggle` for
+    /// one `SettingsStore.DockIconMode` case. Mirrors `frequencyToggle(_:
+    /// shortcut:)` above, minus the keyboard shortcut: Activity Monitor
+    /// doesn't assign one to its own Dock Icon submenu either.
+    private func dockIconToggle(_ mode: SettingsStore.DockIconMode) -> some View {
+        Toggle(isOn: dockIconBinding(for: mode)) {
+            Text(mode.displayName)
+        }
+    }
+
+    /// Same "set to `true` writes through, set to `false` is a no-op"
+    /// shape as `binding(for:)` below, over `settings.dockIconMode` instead
+    /// of `settings.updateSpeed`.
+    private func dockIconBinding(for mode: SettingsStore.DockIconMode) -> Binding<Bool> {
+        Binding(
+            get: { settings.dockIconMode == mode },
+            set: { isOn in
+                guard isOn else { return }
+                settings.dockIconMode = mode
+            }
+        )
     }
 
     /// One "Update Frequency" row: a checkmarked, mutually-exclusive

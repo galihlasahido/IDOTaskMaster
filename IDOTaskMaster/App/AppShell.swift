@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Root shell for the main window: native sidebar nav, page routing, and
@@ -27,27 +28,23 @@ import SwiftUI
 /// it at the sidebar's bottom, separate from the scrollable page list
 /// ("Bottom: Settings, Colors (popover)"), and §4's M8 task frames it as
 /// its own "Settings window (⌘,)" rather than a page alongside Summary/
-/// Performance/etc. This milestone gives it a fixed footer button below
-/// the `List` — matching that bottom placement and already routed to its
-/// own `SettingsPage` placeholder — so M8 only has to decide whether that
-/// button opens a `Settings` scene or keeps showing this page in place;
-/// where the button lives doesn't change either way.
+/// Performance/etc. This struct gives it a fixed footer button below the
+/// `List` — matching that bottom placement — that opens the app's native
+/// `Settings` scene (M8, wired in `IDOTaskMasterApp`) as its own separate
+/// window, the standard macOS pattern, rather than swapping this window's
+/// own detail pane the way a `SidebarPage` row would.
 struct AppShell: View {
-    /// The selected `List` row, if any. `nil` both before first selection
-    /// resolves and whenever the Settings footer button is the active
-    /// destination instead (see `settingsSelected`) — `List` briefly
-    /// clears its own selection when a row outside it becomes current,
-    /// which is exactly the "no page row highlighted" look Settings
-    /// wants.
+    /// The selected `List` row. Seeded from `settings.defaultStartPage`
+    /// in `onAppear` (M8's "default start page" — PLAN.md §1.1) rather
+    /// than at declaration time: `@State`'s initial value runs before
+    /// `settings` is available from the environment, so `.summary` here is
+    /// only ever a momentary placeholder, never what a user actually sees
+    /// once `onAppear` has run.
     @State private var selection: SidebarPage? = .summary
-    /// True while the Settings footer button (rather than a `List` row)
-    /// is the active destination. Kept separate from `selection` instead
-    /// of folding Settings into `SidebarPage` — see that type's and this
-    /// struct's doc comments for why Settings isn't a list row at all.
-    @State private var settingsSelected = false
     /// Feeds `PageInfoBar` real health/process-count/generation numbers —
     /// see its doc comment for the shared-`Sampler` lifetime this owns.
     @StateObject private var statusModel = AppShellStatusModel()
+    @EnvironmentObject private var settings: SettingsStore
 
     var body: some View {
         NavigationSplitView {
@@ -70,18 +67,14 @@ struct AppShell: View {
             .navigationTitle(navigationTitle)
         }
         .frame(minWidth: 920, minHeight: 620)
-        // Selecting a page row hands the destination back to `selection`;
-        // this clears `settingsSelected` so the two "which destination is
-        // showing" flags never disagree with the `List`'s own highlight.
-        .onChange(of: selection) { newValue in
-            if newValue != nil { settingsSelected = false }
+        .onAppear {
+            selection = settings.defaultStartPage
+            statusModel.start()
         }
-        .onAppear { statusModel.start() }
     }
 
     private var navigationTitle: String {
-        if settingsSelected { return "Settings" }
-        return selection?.title ?? "IDOTaskMaster"
+        selection?.title ?? "IDOTaskMaster"
     }
 
     // MARK: - Sidebar
@@ -115,40 +108,35 @@ struct AppShell: View {
     /// [name removed]'s bottom-of-sidebar Settings entry (PLAN.md §1.1), reproduced
     /// as a plain button below the `List` rather than a row inside it —
     /// see this struct's doc comment for why Settings isn't a
-    /// `SidebarPage` case.
+    /// `SidebarPage` case. Opens the app's `Settings` scene the same way
+    /// the App menu's "Settings…" item (⌘,) does — `showSettingsWindow:`
+    /// is the selector that scene registers on the responder chain, the
+    /// only way to trigger it programmatically on this app's macOS 13.0
+    /// minimum target (`EnvironmentValues.openSettings` needs macOS 14).
     private var settingsFooterButton: some View {
         Button {
-            selection = nil
-            settingsSelected = true
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         } label: {
-            Label("Settings", systemImage: "gearshape")
+            Label("Settings…", systemImage: "gearshape")
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        // Same accent-tint selection language `StatTile` uses for its own
-        // selected state, so this footer row reads as part of the same
-        // nav rather than a one-off control.
-        .background(settingsSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .contentShape(Rectangle())
-        .accessibilityAddTraits(settingsSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     // MARK: - Detail
 
     @ViewBuilder
     private var detail: some View {
-        if settingsSelected {
-            SettingsPage()
-        } else if let selection {
+        if let selection {
             destination(for: selection)
         } else {
-            // Reachable only if a future change clears `selection`
-            // without setting `settingsSelected` (today nothing does —
-            // the footer button always pairs those two writes together,
-            // and every `List` row always yields a non-nil `selection`).
-            // Kept as a safety net rather than force-unwrapping.
+            // Reachable only in the brief window before `onAppear` sets
+            // `selection` from `settings.defaultStartPage`, and as a
+            // safety net if a future change ever clears `selection`
+            // outright — every `List` row always yields a non-nil one.
             // Hand-written rather than `ContentUnavailableView`, which
             // needs macOS 14 — this target's minimum is 13.0 (PLAN.md §2).
             VStack(spacing: 10) {
@@ -192,6 +180,7 @@ struct AppShell: View {
 
 #Preview {
     AppShell()
+        .environmentObject(SettingsStore(defaults: UserDefaults(suiteName: "AppShell.preview")!))
 }
 
 // MARK: - Status model
