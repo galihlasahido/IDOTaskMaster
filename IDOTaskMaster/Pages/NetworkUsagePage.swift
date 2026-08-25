@@ -7,11 +7,17 @@ import SwiftUI
 /// rates (nettop-style), sortable, with totals."
 ///
 /// Layout mirrors `ConnectionsPage`'s shape (status line, a `StatTile`
-/// row, then the table) minus that page's trailing `DetailPane` — a
-/// traffic row's every field already reads directly off the table
-/// (process, PID, two rates, two cumulative totals), so a separate detail
-/// panel would just repeat what's already on screen rather than add
-/// anything, unlike Connections' own multi-field socket detail.
+/// row, then the table), plus its own below-the-table `DetailPane` (not
+/// trailing, like Connections' — this page's table is already six columns
+/// wide with nothing to spare). A traffic row's rate/total fields already
+/// read directly off the table, so the pane doesn't repeat those; it adds
+/// the two things this page genuinely has nowhere else to show — the same
+/// per-pid code-signing identity `ProcessesPage`'s own detail pane looks
+/// up (`SigningInfoViewModel`, shared as-is — signing identity isn't a
+/// Processes-specific concept), and that pid's own open sockets, looked up
+/// from `ConnectionsProvider` the same one-shot-per-selection way (see
+/// `NetworkConnectionsLookupViewModel` below) rather than continuously
+/// polled — directly answering "what connections make up this traffic."
 ///
 /// `NetworkTrafficMonitor` (`App/NetworkTrafficMonitor.swift`) polls
 /// `NetTrafficProvider` on a 1-second cadence — matching that provider's
@@ -25,6 +31,17 @@ struct NetworkUsagePage: View {
     @EnvironmentObject private var model: NetworkTrafficMonitor
     @State private var searchText = ""
     @State private var sort: DataTableSort? = DataTableSort(columnID: "receive", ascending: false)
+    @State private var selectedPID: pid_t?
+    /// Shared with `ProcessesPage` as-is — a running process's
+    /// code-signing identity isn't a Processes-specific concept, and
+    /// fetching/caching it per pid works exactly the same way here.
+    @StateObject private var signingModel = SigningInfoViewModel()
+    @StateObject private var connectionsModel = NetworkConnectionsLookupViewModel()
+
+    /// Matches `ProcessesPage.detailPaneHeight` in spirit — enough room
+    /// for a signing summary plus a handful of connection rows without
+    /// scrolling on this app's minimum window height.
+    private static let detailPaneHeight: CGFloat = 220
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +52,9 @@ struct NetworkUsagePage: View {
                 Divider()
                 table
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Divider()
+                detailPane
+                    .frame(height: Self.detailPaneHeight)
             } else {
                 idleState
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -45,6 +65,10 @@ struct NetworkUsagePage: View {
             ToolbarItem(placement: .primaryAction) {
                 ExportMenu(columns: Self.columns, rows: filteredReadings, suggestedName: "Network Usage")
             }
+        }
+        .onChange(of: selectedPID) { pid in
+            signingModel.load(pid: pid)
+            connectionsModel.load(pid: pid)
         }
     }
 
@@ -238,6 +262,7 @@ struct NetworkUsagePage: View {
             columns: Self.columns,
             rows: filteredReadings,
             sort: $sort,
+            selection: $selectedPID,
             emptyMessage: emptyMessage
         )
     }
@@ -312,6 +337,110 @@ struct NetworkUsagePage: View {
         formatter.timeStyle = .medium
         return formatter
     }()
+
+    // MARK: - Detail pane
+
+    /// Caps how many of a busy process's sockets the "Connections" section
+    /// lists individually — a browser or sync client can easily have
+    /// dozens open at once, and past this many, "which exact ones" matters
+    /// far less than "roughly how many" (the section's own title already
+    /// states the true total).
+    private static let connectionListLimit = 20
+
+    @ViewBuilder
+    private var detailPane: some View {
+        if let reading = selectedReading {
+            DetailPane(
+                title: reading.processName ?? "Unavailable",
+                subtitle: "PID \(reading.pid)",
+                systemImage: "network",
+                sections: detailSections(for: reading)
+            )
+        } else {
+            DetailPane(emptyMessage: "Select a process to view its signing identity and open connections.")
+        }
+    }
+
+    private var selectedReading: NetTrafficReading? {
+        guard let selectedPID else { return nil }
+        return model.snapshot?.readings.first(where: { $0.pid == selectedPID })
+    }
+
+    private func detailSections(for reading: NetTrafficReading) -> [DetailPaneSection] {
+        [signingSection(for: reading.pid), connectionsSection(for: reading.pid)]
+    }
+
+    /// Mirrors `ProcessesPage.signingSection(for:)` field-for-field — see
+    /// `SigningInfoViewModel`'s own doc comment for the shared lazy-fetch/
+    /// cache-forever shape both pages rely on.
+    private func signingSection(for pid: pid_t) -> DetailPaneSection {
+        let info = signingModel.info(for: pid)
+        return DetailPaneSection(title: "Signing", fields: [
+            DetailPaneField(label: "Status", value: info?.statusLabel ?? "", isUnavailable: info == nil),
+            DetailPaneField(label: "Notarized", value: notarizedLabel(info?.isNotarized), isUnavailable: info?.isNotarized == nil),
+            DetailPaneField(label: "Team ID", value: info?.teamIdentifier ?? "", isUnavailable: info?.teamIdentifier == nil, isMonospaced: true),
+            DetailPaneField(label: "Signing ID", value: info?.signingIdentifier ?? "", isUnavailable: info?.signingIdentifier == nil),
+        ])
+    }
+
+    private func notarizedLabel(_ isNotarized: Bool?) -> String {
+        guard let isNotarized else { return "" }
+        return isNotarized ? "Yes" : "No"
+    }
+
+    /// This pid's own open sockets, from `NetworkConnectionsLookupViewModel`
+    /// — the same three states `signingSection` already distinguishes
+    /// (still loading / genuinely failed / loaded) rather than treating
+    /// "no data yet" and "confirmed zero connections" as the same thing.
+    private func connectionsSection(for pid: pid_t) -> DetailPaneSection {
+        if connectionsModel.hasFailed(pid) {
+            return DetailPaneSection(title: "Connections", fields: [
+                DetailPaneField(label: "Status", value: "", isUnavailable: true),
+            ])
+        }
+        guard let sockets = connectionsModel.sockets(for: pid) else {
+            return DetailPaneSection(title: "Connections", fields: [
+                DetailPaneField(label: "Status", value: "Loading\u{2026}"),
+            ])
+        }
+        guard !sockets.isEmpty else {
+            return DetailPaneSection(title: "Connections", fields: [
+                DetailPaneField(label: "Open Sockets", value: "None"),
+            ])
+        }
+
+        let shown = sockets.prefix(Self.connectionListLimit)
+        var fields = shown.map { socket in
+            DetailPaneField(
+                id: "\(socket.descriptor)",
+                label: connectionProtocolLabel(socket),
+                value: connectionSummary(socket),
+                isMonospaced: true
+            )
+        }
+        if sockets.count > shown.count {
+            fields.append(DetailPaneField(id: "more", label: "", value: "+\(sockets.count - shown.count) more\u{2026}"))
+        }
+        return DetailPaneSection(title: "Connections (\(sockets.count))", fields: fields)
+    }
+
+    /// "TCP4"/"UDP6"/"Unix" — same compact shape as `ConnectionsPage`'s own
+    /// (private, so not directly reusable) `protocolLabel`.
+    private func connectionProtocolLabel(_ socket: ConnectionSocket) -> String {
+        guard let ipVersion = socket.ipVersion else { return socket.transport.rawValue }
+        return "\(socket.transport.rawValue)\(ipVersion.rawValue)"
+    }
+
+    private func connectionSummary(_ socket: ConnectionSocket) -> String {
+        if socket.transport == .unixDomain {
+            return socket.unixPath ?? "Unavailable"
+        }
+        var text = "\(socket.localEndpoint) \u{2192} \(socket.remoteEndpoint)"
+        if let exposure = socket.exposure {
+            text += " (\(exposure.label))"
+        }
+        return text
+    }
 }
 
 // MARK: - Formatting
@@ -351,6 +480,56 @@ private enum Fmt {
 // `onAppear`/stopped in `onDisappear`. See that type's own doc comment for
 // why: the backing `nettop` subprocess's slow first-block warm-up used to
 // get paid on every single page visit.
+
+/// Backs `NetworkUsagePage`'s detail pane's "Connections" section: fetches
+/// `ConnectionsProvider.sample()` once per selected pid rather than
+/// continuously polling it — a running process's socket list doesn't need
+/// re-fetching every second just because this page's own traffic rates do,
+/// the same reasoning `SigningInfoViewModel` gives for code-signing
+/// identity. Filters `ConnectionsProvider`'s whole-system catalog down to
+/// one pid client-side, the same shape `ConnectionsPage` itself already
+/// uses (its filter chips), just scoped to a single process here. Results
+/// are cached in `socketsByPID` for the life of this view model, same
+/// never-evicted policy as `SigningInfoViewModel.infoByPID`.
+@MainActor
+final class NetworkConnectionsLookupViewModel: ObservableObject {
+    @Published private(set) var socketsByPID: [pid_t: [ConnectionSocket]] = [:]
+    /// Pids whose fetch threw — kept separate from `socketsByPID` so a
+    /// genuine failure never reads as "confirmed zero connections," the
+    /// same honest-gap distinction `NetTrafficReading`'s own rate fields
+    /// draw between "no reading yet" and "measured zero."
+    @Published private(set) var failedPIDs: Set<pid_t> = []
+
+    private let provider = ConnectionsProvider()
+    private var pendingPIDs: Set<pid_t> = []
+
+    func sockets(for pid: pid_t) -> [ConnectionSocket]? {
+        socketsByPID[pid]
+    }
+
+    func hasFailed(_ pid: pid_t) -> Bool {
+        failedPIDs.contains(pid)
+    }
+
+    /// Starts a fetch for `pid` unless it's already cached, already
+    /// known-failed, or already in flight. `pid == nil` (nothing selected)
+    /// is a no-op.
+    func load(pid: pid_t?) {
+        guard let pid, socketsByPID[pid] == nil, !failedPIDs.contains(pid), !pendingPIDs.contains(pid) else { return }
+        pendingPIDs.insert(pid)
+        let provider = provider
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let catalog = try await provider.sample()
+                self.socketsByPID[pid] = catalog.sockets.filter { $0.pid == pid }
+            } catch {
+                self.failedPIDs.insert(pid)
+            }
+            self.pendingPIDs.remove(pid)
+        }
+    }
+}
 
 #Preview {
     NetworkUsagePage()
