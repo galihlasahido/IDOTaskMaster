@@ -103,7 +103,7 @@ struct AlertsPage: View {
             Label("Send Test Notification", systemImage: "bell.badge")
         }
         .disabled(selectedRule == nil)
-        .help("Post a test notification for the selected rule")
+        .help("Post a test notification for the selected rule, and run its command if one\u{2019}s configured")
     }
 
     private var deleteButton: some View {
@@ -284,6 +284,12 @@ struct AlertsPage: View {
                     value: lastFired.map { Self.dateTimeFormatter.string(from: $0) } ?? "",
                     isUnavailable: lastFired == nil
                 ),
+                DetailPaneField(
+                    label: "Command",
+                    value: rule.commandToRun ?? "",
+                    isUnavailable: rule.commandToRun == nil,
+                    isMonospaced: true
+                ),
             ]),
         ]
     }
@@ -425,6 +431,7 @@ private struct AlertRuleEditorView: View {
     @State private var batteryPercent: Double
     @State private var isEnabled: Bool
     @State private var cooldownMinutes: Double
+    @State private var commandToRun: String
 
     init(existingRule: AlertRule?, onSave: @escaping (AlertRule) -> Void) {
         self.existingRule = existingRule
@@ -458,6 +465,7 @@ private struct AlertRuleEditorView: View {
         }
         _isEnabled = State(initialValue: existingRule?.isEnabled ?? true)
         _cooldownMinutes = State(initialValue: existingRule?.cooldownMinutes ?? 15)
+        _commandToRun = State(initialValue: existingRule?.commandToRun ?? "")
     }
 
     var body: some View {
@@ -480,12 +488,22 @@ private struct AlertRuleEditorView: View {
                     Toggle("Enabled", isOn: $isEnabled)
                     Stepper(cooldownLabel, value: $cooldownMinutes, in: 1...240, step: 1)
                 }
+                Section {
+                    TextField("Command", text: $commandToRun, prompt: Text("e.g. /usr/bin/say \"CPU is high\""))
+                        .font(.system(.body, design: .monospaced))
+                } header: {
+                    Text("Run a Command")
+                } footer: {
+                    Text("Runs alongside the notification every time this rule fires (and when you send a test). The rule\u{2019}s name, message, and severity are passed as environment variables (IDOTASKMASTER_ALERT_\u{2026}).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
             Divider()
             footer
         }
-        .frame(width: 420, height: 480)
+        .frame(width: 420, height: 560)
     }
 
     private var header: some View {
@@ -552,12 +570,14 @@ private struct AlertRuleEditorView: View {
         case .newPublicPort: kind = .newPublicListeningPort
         }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCommand = commandToRun.trimmingCharacters(in: .whitespacesAndNewlines)
         return AlertRule(
             id: existingRule?.id ?? UUID(),
             name: trimmedName.isEmpty ? tag.title : trimmedName,
             kind: kind,
             isEnabled: isEnabled,
-            cooldownMinutes: cooldownMinutes
+            cooldownMinutes: cooldownMinutes,
+            commandToRun: trimmedCommand.isEmpty ? nil : trimmedCommand
         )
     }
 }

@@ -90,6 +90,12 @@ final class AlertsEngine: ObservableObject {
     /// .sample()` call itself threw — honest-degradation surface for the
     /// "new public listening port" rule specifically.
     @Published private(set) var lastConnectionsPollError: String?
+    /// Incremented each time the user clicks a posted notification —
+    /// `AppShell` observes this (via `onChange`) to switch to the Alerts
+    /// page and bring the window forward. A counter rather than a `Bool`
+    /// so `onChange` fires reliably even if two clicks land close
+    /// together, with nothing to remember to reset.
+    @Published private(set) var notificationClickSignal = 0
 
     private let defaults: UserDefaults
     private let sampler: Sampler
@@ -206,6 +212,7 @@ final class AlertsEngine: ObservableObject {
     func sendTestNotification(for rule: AlertRule) {
         let message = "Test notification for \u{201C}\(rule.name)\u{201D} \u{2014} \(rule.kind.conditionSummary)."
         postNotification(title: rule.name, body: message)
+        runCommandIfConfigured(rule, message: message, severity: .warning, firedAt: Date())
         recordFired(FiredAlert(ruleID: rule.id, ruleName: rule.name, message: message, severity: .warning, firedAt: Date(), isTest: true))
     }
 
@@ -392,6 +399,7 @@ final class AlertsEngine: ObservableObject {
         }
         lastFiredAt[rule.id] = now
         postNotification(title: rule.name, body: message)
+        runCommandIfConfigured(rule, message: message, severity: severity, firedAt: now)
         recordFired(FiredAlert(ruleID: rule.id, ruleName: rule.name, message: message, severity: severity, firedAt: now))
     }
 
@@ -418,6 +426,52 @@ final class AlertsEngine: ObservableObject {
         content.sound = .default
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    /// Runs `rule.commandToRun` (if any) through `/bin/zsh -c` — a no-op
+    /// for the common case of no command configured. This is genuinely
+    /// arbitrary code execution, unlike every other `Process` launch in
+    /// this app (`du`, `codesign`, `launchctl`, ... — always a fixed
+    /// executable with fixed or programmatically-built arguments, never a
+    /// free-form string): what makes it safe here is that the command is
+    /// authored by the same person running it, in a field they typed it
+    /// into themselves — the same trust boundary as a shell alias or cron
+    /// job they'd write by hand, not remote or untrusted input. Dispatched
+    /// onto a background queue so a slow or hanging command can never
+    /// stall `AlertsEngine`'s 5-second evaluation tick; output is
+    /// discarded (`/dev/null`) the same "best-effort, nothing actionable
+    /// beyond what's already surfaced" way `postNotification`'s own `nil`
+    /// completion handler is. The rule's own name/message/severity/fire
+    /// time ride along as environment variables so the command can act on
+    /// *which* alert fired without needing its own copy of this engine's
+    /// state.
+    private func runCommandIfConfigured(_ rule: AlertRule, message: String, severity: AlertSeverity, firedAt: Date) {
+        guard let command = rule.commandToRun?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty else { return }
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["IDOTASKMASTER_ALERT_NAME"] = rule.name
+        environment["IDOTASKMASTER_ALERT_MESSAGE"] = message
+        environment["IDOTASKMASTER_ALERT_SEVERITY"] = severity.rawValue
+        environment["IDOTASKMASTER_ALERT_FIRED_AT"] = ISO8601DateFormatter().string(from: firedAt)
+
+        DispatchQueue.global(qos: .utility).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-c", command]
+            process.environment = environment
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try? process.run()
+        }
+    }
+
+    /// Called by `AppDelegate`'s `UNUserNotificationCenterDelegate`
+    /// conformance when the user clicks a posted notification — without a
+    /// delegate registered at all, `UNUserNotificationCenter` silently
+    /// drops the click with nothing to act on it, which is why clicking a
+    /// fired alert used to do nothing.
+    func handleNotificationClicked() {
+        notificationClickSignal += 1
     }
 
     // MARK: - Persistence
@@ -458,13 +512,29 @@ struct AlertRule: Identifiable, Codable, Equatable {
     /// reasonable "don't nag" starting point a user can shorten or
     /// lengthen per rule.
     var cooldownMinutes: Double
+    /// A shell command to run (via `/bin/zsh -c`) every time this rule
+    /// fires, alongside the notification — `nil`/empty runs nothing.
+    /// `Optional` rather than defaulting to `""` so a rule persisted
+    /// before this field existed decodes as `nil` for free: synthesized
+    /// `Decodable` treats a missing key on an `Optional` property as
+    /// `nil` rather than a decode failure, so no custom `init(from:)` or
+    /// schema migration is needed for this to be additive-safe.
+    var commandToRun: String?
 
-    init(id: UUID = UUID(), name: String, kind: AlertRuleKind, isEnabled: Bool = true, cooldownMinutes: Double = 15) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        kind: AlertRuleKind,
+        isEnabled: Bool = true,
+        cooldownMinutes: Double = 15,
+        commandToRun: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.kind = kind
         self.isEnabled = isEnabled
         self.cooldownMinutes = cooldownMinutes
+        self.commandToRun = commandToRun
     }
 }
 

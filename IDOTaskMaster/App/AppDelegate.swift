@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import UserNotifications
 
 /// `NSApplicationDelegate` hosting the AppKit-level app-lifecycle behavior
 /// PLAN.md §4 M8 asks for that has no SwiftUI `App`/`Scene` API on this
@@ -20,7 +21,7 @@ import Combine
 /// `@NSApplicationDelegateAdaptor` instance (the adaptor's instance is
 /// built before `IDOTaskMasterApp`'s own initializer body would run).
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let settings = SettingsStore()
     let windowController: MainWindowController
     /// Backs the menu bar extra's compact readout and popover
@@ -97,6 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // evaluating (and notifications keep firing) whether or not the
         // Alerts page, or any window at all, is currently open.
         alertsEngine.start()
+        // Registers this delegate before any rule could possibly fire —
+        // without one, `UNUserNotificationCenter` has nothing to call
+        // when the user clicks a posted notification, which is why
+        // clicking one used to do nothing at all. See this class's
+        // `UNUserNotificationCenterDelegate` conformance below.
+        UNUserNotificationCenter.current().delegate = self
         // Starts the history recorder immediately too, for the same reason
         // as `alertsEngine` above — it must keep recording (and, later,
         // rolling up/pruning) whether or not a `HistoryPage` window is
@@ -158,6 +165,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             shortcut?.register()
         } else {
             shortcut?.unregister()
+        }
+    }
+
+    // MARK: - UNUserNotificationCenterDelegate
+
+    /// Without this, macOS doesn't reliably show a banner for a
+    /// notification posted while this app is the active/frontmost app —
+    /// `alertsEngine`'s watchdog can fire at any time, including while
+    /// someone's looking right at the window, so this always asks for the
+    /// full presentation.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .list])
+    }
+
+    /// The other half of the fix `UNUserNotificationCenter.current()
+    /// .delegate = self` above sets up: with no delegate at all, clicking
+    /// a posted notification had nothing to call and silently did
+    /// nothing. The default click (the notification's own body, not a
+    /// custom action button — this app doesn't define any) brings the
+    /// window forward and tells `AlertsEngine` a click happened, which
+    /// `AppShell` observes to switch to the Alerts page.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        Task { @MainActor in
+            if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+                NSApp.activate(ignoringOtherApps: true)
+                windowController.show()
+                alertsEngine.handleNotificationClicked()
+            }
+            completionHandler()
         }
     }
 }

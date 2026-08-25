@@ -50,6 +50,10 @@ struct AppShell: View {
     /// `CommandPaletteController`'s own doc comment for why this is a
     /// shared, `AppDelegate`-owned instance rather than local `@State`.
     @EnvironmentObject private var commandPalette: CommandPaletteController
+    /// Observed purely for `notificationClickSignal` — see this shell's
+    /// `.onChange` below for why clicking a fired alert's notification
+    /// needs a way to reach this view's own private `selection` state.
+    @EnvironmentObject private var alertsEngine: AlertsEngine
     /// Set by the palette's `onSelectProcess` when the user jumps
     /// straight to a process (PLAN.md §4 M10's "jump to any page or
     /// process by name/PID"): `selection` switches to `.processes` in the
@@ -104,6 +108,14 @@ struct AppShell: View {
                     pendingProcessSelectionPID = reading.pid
                 }
             )
+        }
+        // `AppDelegate`'s `UNUserNotificationCenterDelegate` conformance
+        // already brings the window forward on a notification click; this
+        // is the rest of that fix — switching to the Alerts page once
+        // it's in front, the same "external event sets `selection`"
+        // pattern the command palette's own `onSelectPage` uses above.
+        .onChange(of: alertsEngine.notificationClickSignal) { _ in
+            selection = .alerts
         }
     }
 
