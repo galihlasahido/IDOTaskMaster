@@ -41,7 +41,21 @@ struct BenchmarksPage: View {
     @State private var historySort: DataTableSort? = DataTableSort(columnID: "date", ascending: false)
     @State private var selectedHistoryID: UUID?
 
-    private static let cardGridColumns = [GridItem(.adaptive(minimum: 240), spacing: 10)]
+    /// `cardsSection`'s two fixed rows — CPU's pair on its own row, the
+    /// other three domains on the next. Replaces an earlier
+    /// `LazyVGrid(.adaptive(minimum: 240))` that packed all five cards
+    /// into whatever single row fit the window width: at most widths that
+    /// meant 5 (sometimes narrow) columns, and `BenchmarkCard`'s content
+    /// wraps differently at different widths — the CPU cards' longer
+    /// "Score … pts" line wrapped at the narrower width the 5-across
+    /// layout gave them, making them taller than their row siblings even
+    /// though every card already stretches its own background to match
+    /// whatever height it's given (`BenchmarkCard.body`'s
+    /// `.frame(maxWidth: .infinity, minHeight: 96, ...)` before its
+    /// `.background`). Two explicit rows fixes the actual cause — width,
+    /// not a stretch bug — by giving every card more of it.
+    private static let cpuCardRow: [BenchmarkKind] = [.cpuSingleCore, .cpuMultiCore]
+    private static let otherCardRow: [BenchmarkKind] = [.gpuCompute, .diskReadWrite, .internetSpeed]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -143,13 +157,33 @@ struct BenchmarksPage: View {
 
     // MARK: - Cards
 
-    /// One `BenchmarkCard` per `BenchmarkKind`, in that enum's declaration
-    /// order — mirrors `ConnectionsPage.statTileRow`'s own non-scrolling
-    /// `LazyVGrid` shape (a handful of fixed cards above an expanding
-    /// table), rather than giving five cards their own `ScrollView`.
+    /// One `BenchmarkCard` per `BenchmarkKind`, laid out as two fixed rows
+    /// (`Self.cpuCardRow`/`Self.otherCardRow` — see their doc comment) —
+    /// mirrors `ConnectionsPage.statTileRow`'s own non-scrolling row of
+    /// fixed cards above an expanding table, rather than giving five
+    /// cards their own `ScrollView`.
     private var cardsSection: some View {
-        LazyVGrid(columns: Self.cardGridColumns, spacing: 10) {
-            ForEach(BenchmarkKind.allCases) { kind in
+        VStack(spacing: 10) {
+            cardRow(Self.cpuCardRow)
+            cardRow(Self.otherCardRow)
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// One `cardsSection` row: every card in `kinds` shares the row's
+    /// height via `.frame(maxHeight: .infinity, alignment: .top)` — plain
+    /// `HStack` siblings with no enclosing `ScrollView` at this point in
+    /// the page (`cardsSection` sits above that section's own, separate
+    /// `ScrollView`), so SwiftUI's ordinary two-pass layout already
+    /// resolves this row's height to its tallest card and hands that
+    /// concrete height back down to the rest — no fixed-height constant
+    /// needed the way `SummaryPage.topRowHeight` is, since there's no
+    /// unbounded-`ScrollView` ancestor here to make `maxHeight: .infinity`
+    /// ambiguous.
+    private func cardRow(_ kinds: [BenchmarkKind]) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            ForEach(kinds) { kind in
                 BenchmarkCard(
                     kind: kind,
                     result: model.latestResult(for: kind),
@@ -162,10 +196,9 @@ struct BenchmarksPage: View {
                     },
                     cancelAction: { model.cancelActiveRun() }
                 )
+                .frame(maxHeight: .infinity, alignment: .top)
             }
         }
-        .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     // MARK: - History
