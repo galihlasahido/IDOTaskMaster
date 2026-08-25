@@ -30,6 +30,7 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
     case networkUsage
     case installedApps
     case diskSpace
+    case cleanup
     case benchmarks
     case history
     case alerts
@@ -51,6 +52,7 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
         case .networkUsage: "Network Usage"
         case .installedApps: "Installed Apps"
         case .diskSpace: "Disk Space"
+        case .cleanup: "Clean Up"
         case .benchmarks: "Benchmarks"
         case .history: "History"
         case .alerts: "Alerts"
@@ -75,6 +77,7 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
         case .networkUsage: "arrow.up.arrow.down.circle"
         case .installedApps: "square.grid.2x2"
         case .diskSpace: "internaldrive"
+        case .cleanup: "trash.circle"
         case .benchmarks: "speedometer"
         case .history: "clock.arrow.circlepath"
         case .alerts: "bell"
@@ -95,6 +98,12 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
         case .powerFreq, .connections, .installedApps, .diskSpace: "M6"
         case .benchmarks: "M7"
         case .networkUsage, .history, .alerts: "M9"
+        // Added after the original M0–M11 plan shipped, so there's no
+        // matching milestone number — `PlaceholderPageView` (the only
+        // consumer of this property) is itself unused now that every page
+        // has real content, so this case only exists to keep the switch
+        // exhaustive.
+        case .cleanup: "post-1.0"
         }
     }
 
@@ -105,10 +114,10 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
     /// exactly the formerly-paywalled pages (Power & Freq, Connections,
     /// Installed Apps, Disk Space, Benchmarks) plus this app's own
     /// additions beyond that baseline that belong in the same second
-    /// group (History, Alerts, Network Usage).
+    /// group (History, Alerts, Network Usage, Clean Up).
     var isToolsSection: Bool {
         switch self {
-        case .powerFreq, .connections, .networkUsage, .installedApps, .diskSpace, .benchmarks, .history, .alerts:
+        case .powerFreq, .connections, .networkUsage, .installedApps, .diskSpace, .cleanup, .benchmarks, .history, .alerts:
             true
         case .summary, .performance, .processes, .systemInfo, .startup, .users, .services:
             false

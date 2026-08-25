@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 /// Which of PLAN.md §1.1's Disk Space legend buckets ("File Type legend
@@ -288,43 +287,6 @@ actor DiskSpaceScanner {
     private static let maxWorkerCount = 8
 
     private struct ScanCancelled: Error {}
-
-    /// One directory entry's `lstat(2)` result — deliberately reads the raw
-    /// struct instead of going through `FileManager.attributesOfItem`,
-    /// which boxes every field into an `NSDictionary`/`NSNumber` (a real
-    /// cost across millions of entries, per this type's own original doc
-    /// comment) and, more importantly, only exposes `st_size` — a file's
-    /// *apparent* size, not how much disk it actually occupies. Those two
-    /// diverge hugely for sparse files: a VM/container disk image
-    /// (Docker Desktop's `Docker.raw`, a QEMU `.img`, ...) can report a
-    /// multi-hundred-gigabyte apparent size while occupying a fraction of
-    /// that physically, which is exactly how a `st_size`-summing scan can
-    /// report more bytes than the volume itself holds. `st_blocks` is
-    /// always in 512-byte units regardless of the filesystem's own block
-    /// size — a POSIX convention, not an APFS-specific one — matching what
-    /// `du` itself reports.
-    private struct FileEntryStat {
-        let isDirectory: Bool
-        let isSymbolicLink: Bool
-        let realSizeBytes: UInt64
-        let linkCount: Int
-        let inode: UInt64
-        let device: UInt64
-    }
-
-    private static func statEntry(atPath path: String) -> FileEntryStat? {
-        var info = stat()
-        guard lstat(path, &info) == 0 else { return nil }
-        let fileType = info.st_mode & S_IFMT
-        return FileEntryStat(
-            isDirectory: fileType == S_IFDIR,
-            isSymbolicLink: fileType == S_IFLNK,
-            realSizeBytes: UInt64(info.st_blocks) * 512,
-            linkCount: Int(info.st_nlink),
-            inode: UInt64(info.st_ino),
-            device: UInt64(info.st_dev)
-        )
-    }
 
     /// Whether `entry` describes a file this scan has already counted once
     /// under a different name pointing at the same (volume, inode) — i.e.

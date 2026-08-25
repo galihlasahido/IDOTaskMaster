@@ -205,6 +205,7 @@ struct AppShell: View {
         case .networkUsage: NetworkUsagePage()
         case .installedApps: InstalledAppsPage()
         case .diskSpace: DiskSpacePage()
+        case .cleanup: CleanupPage()
         case .benchmarks: BenchmarksPage()
         case .history: HistoryPage()
         case .alerts: AlertsPage()
