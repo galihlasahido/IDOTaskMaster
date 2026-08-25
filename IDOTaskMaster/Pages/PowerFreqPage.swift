@@ -160,6 +160,36 @@ struct PowerFreqPage: View {
         }
         .padding(.trailing, 12)
         .padding(.vertical, 1)
+        // This row's Sensor/Value/Min/Max columns are four separate `Text`
+        // views with no column-header association for VoiceOver to read
+        // back (unlike `DataTable`'s AppKit-backed siblings, this is a
+        // plain SwiftUI `List` row — see this file's own doc comment on
+        // why). Collapsing it into one element with an explicit
+        // label/value pairing (matching `DetailPane.fieldValue`'s own
+        // "say what the number means" convention) reads as e.g. "Hotspot,
+        // 42.3°C, min 38.0°C, max 61.4°C" instead of four bare, unlabeled
+        // numbers in a row.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(node.title)
+        .accessibilityValue(rowAccessibilityValue(node))
+    }
+
+    /// See `row(_:)`'s own doc comment. A group row (`node.children != nil`)
+    /// has no reading of its own — `node.title` alone, read by
+    /// `accessibilityLabel` above, is already a complete description (List's
+    /// own disclosure-triangle semantics cover expanded/collapsed state), so
+    /// this returns an empty value rather than an empty "Value , min —, max
+    /// —" that would just repeat "unavailable" three times for nothing.
+    private func rowAccessibilityValue(_ node: PowerFreqNode) -> String {
+        guard node.children == nil else { return "" }
+        var parts: [String] = [node.isUnavailable ? "Unavailable" : (node.value ?? "Unavailable")]
+        if let minValue = node.minValue, minValue != "\u{2014}" {
+            parts.append("min \(minValue)")
+        }
+        if let maxValue = node.maxValue, maxValue != "\u{2014}" {
+            parts.append("max \(maxValue)")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private func valueCell(_ text: String?, isUnavailable: Bool, width: CGFloat, dimmed: Bool) -> some View {
@@ -241,12 +271,22 @@ struct PowerFreqNode: Identifiable {
 
 // MARK: - View model
 
-/// Drives `PowerFreqPage`'s live sensor tree: owns its own `Sampler`
-/// (started in `onAppear`/stopped in `onDisappear` — the same per-page
-/// `Sampler` lifetime `PerformanceViewModel`'s doc comment establishes) and,
-/// on every tick, folds each finite reading into a running per-sensor
+/// Drives `PowerFreqPage`'s live sensor tree: subscribes to `Sampler.shared`
+/// (started in `onAppear`/unsubscribed in `onDisappear` — the same shared-
+/// instance pattern `PerformanceViewModel`'s doc comment establishes, so
+/// this page's tick doesn't duplicate the CPU/memory/GPU/.../NPU sampling
+/// round the info bar or Performance page may already be driving) and, on
+/// every tick, folds each finite reading into a running per-sensor
 /// `SensorTrack` alongside the plain latest `Snapshot` — `PowerFreqPage`
 /// builds this tick's tree from both via `PowerFreqTreeBuilder`.
+///
+/// Subscribes to `Sampler.shared` rather than a private `Sampler` for the
+/// same reason `PerformanceViewModel` does (see its doc comment): a
+/// private instance here would duplicate the whole CPU/memory/GPU/disk/
+/// network/energy/thermal/NPU sampling round — every one of which this
+/// page's sensor tree reads — on top of whatever the info bar (and
+/// possibly the Performance or Summary page) is already driving via the
+/// shared instance, for the same wall-clock tick.
 @MainActor
 final class PowerFreqViewModel: ObservableObject {
     @Published private(set) var latest: Snapshot?
@@ -261,7 +301,7 @@ final class PowerFreqViewModel: ObservableObject {
     /// `nil` before the first tick.
     @Published private(set) var trackingStartedAt: Date?
 
-    private let sampler = Sampler()
+    private let sampler = Sampler.shared
     private var streamTask: Task<Void, Never>?
 
     /// This tick's tree, built fresh from `latest`/`tracks`. Pure of any
@@ -285,14 +325,18 @@ final class PowerFreqViewModel: ObservableObject {
         }
     }
 
-    /// Stops the stream and the underlying `Sampler`'s tick loop — called
-    /// from `onDisappear` so this page's own sampling doesn't keep running
-    /// while another page is showing (PLAN.md §2's "lowest idle overhead").
+    /// Ends this view model's own subscription — called from `onDisappear`
+    /// so this page stops reading (and computing sensor tracks for) live
+    /// data while another page is showing. Deliberately does *not* call
+    /// `sampler.stop()`: `sampler` is the shared instance, and stopping it
+    /// outright would cut off every other still-active subscriber (the
+    /// info bar, and whichever other page might also be subscribed) —
+    /// cancelling just this task ends only this subscription, and
+    /// `Sampler.shared` itself goes idle on its own once the last one (of
+    /// any kind) does the same, per `removeContinuation`'s doc comment.
     func stop() {
         streamTask?.cancel()
         streamTask = nil
-        let sampler = sampler
-        Task { await sampler.stop() }
     }
 
     /// Clears every tracked Min/Max so the next tick's reading becomes each

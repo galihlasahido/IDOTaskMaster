@@ -75,6 +75,41 @@ actor Sampler {
         self.interval = interval
     }
 
+    /// The app-wide instance for every "while the window is open" live
+    /// consumer — `AppShellStatusModel` (the bottom info bar, which never
+    /// disappears while a window is open) and each page's own view model
+    /// (`PerformanceViewModel`, `SummaryViewModel`, `PowerFreqViewModel`,
+    /// `ConnectionsViewModel`'s traffic sparkline) all subscribe to this
+    /// one instance via `stream()` instead of each spinning up a private
+    /// `Sampler`.
+    ///
+    /// Before M11's performance pass, every one of those owners created
+    /// its *own* `Sampler()`, so having the shell's info bar and one
+    /// visible page on screen together meant two (or more) independent
+    /// tick loops each re-running the full `CPUProvider`/`MemoryProvider`/
+    /// `GPUProvider`/.../`NPUProvider` round at the same cadence for the
+    /// same wall-clock instant — pure duplicated syscall/IOKit cost with
+    /// no benefit, since `stream()` already lets any number of
+    /// subscribers share one tick loop's output (see its doc comment).
+    /// Routing every window-open consumer through this single instance
+    /// collapses that back down to one full sample per tick, which is
+    /// most of what PLAN.md §4 M11's "< ~3% CPU ... idle at Normal
+    /// (2/sec)" budget needed.
+    ///
+    /// Deliberately *not* shared by `AlertsEngine`'s (5s) or
+    /// `HistoryStore`'s (30s) background samplers — those intentionally
+    /// run for the whole process lifetime at their own much slower,
+    /// already-documented cadences regardless of window state, so forcing
+    /// them onto this instance's faster rate whenever a window happens to
+    /// be open would cost more than it saves. Also not shared by
+    /// `MenuBarStatusModel`'s always-on `.slow` sampler, for the same
+    /// reason plus one more: that one must keep a *fixed*, cheap rate
+    /// while the window is fully closed, and this shared instance's
+    /// subscriber-driven auto-stop below (see `removeContinuation`) means
+    /// it goes idle the moment every window-open consumer's subscription
+    /// ends — exactly the state a closed window leaves this instance in.
+    static let shared = Sampler()
+
     deinit {
         tickTask?.cancel()
         for continuation in continuations.values {
@@ -98,8 +133,17 @@ actor Sampler {
         }
     }
 
+    /// Registers `continuation` and makes sure the tick loop is actually
+    /// running — `start()` is idempotent (guarded on `tickTask == nil`),
+    /// so calling it here unconditionally costs nothing for a caller that
+    /// already called `start()` itself (every existing owner does, ahead
+    /// of iterating `stream()`), and is what lets a *new* subscriber on an
+    /// instance nobody is using yet (`Sampler.shared` right after the
+    /// window-open consumer count drops to zero and comes back) resume
+    /// ticking without its owner having to notice and re-call `start()`.
     private func addContinuation(id: UUID, continuation: AsyncStream<Snapshot>.Continuation) {
         continuations[id] = continuation
+        start()
     }
 
     /// Starts the tick loop if it isn't already running. Safe to call
@@ -122,6 +166,14 @@ actor Sampler {
     /// is left untouched, and a later `start()` resumes counting from
     /// where it left off — there's no "restart from zero" case in the
     /// data flow this feeds (info bar, `AlertsEngine`, `HistoryStore`).
+    ///
+    /// A caller on a *shared* instance (`Sampler.shared`) must not call
+    /// this directly unless it genuinely means "end every subscriber's
+    /// stream, not just mine" — it finishes every other consumer's
+    /// `stream()` too. To stop only your own subscription, cancel the
+    /// `Task` you're iterating `stream()` from instead; `removeContinuation`
+    /// already stops the tick loop on its own once the last subscriber is
+    /// gone.
     func stop() {
         tickTask?.cancel()
         tickTask = nil
@@ -136,8 +188,24 @@ actor Sampler {
         interval = newInterval
     }
 
+    /// Unregisters `continuation`, then — if that was the last one — stops
+    /// the tick loop, the same as an explicit `stop()` minus finishing
+    /// continuations (there are none left to finish). This is what makes
+    /// `Sampler.shared` cost nothing once every window-open consumer has
+    /// unsubscribed (main window closed, or every page/the shell torn
+    /// down) without any of those consumers needing to call `stop()`
+    /// themselves — which, for a *shared* instance, would wrongly cut off
+    /// every other still-active subscriber (see `stop()`'s doc comment).
+    /// A private, single-subscriber `Sampler` (`AlertsEngine`'s,
+    /// `HistoryStore`'s, `MenuBarStatusModel`'s) never calls `stop()`
+    /// either, so for those this only ever runs once their one-and-only
+    /// subscription task itself ends — functionally a no-op today, but
+    /// still the correct behavior if that ever changes.
     private func removeContinuation(_ id: UUID) {
         continuations.removeValue(forKey: id)
+        guard continuations.isEmpty else { return }
+        tickTask?.cancel()
+        tickTask = nil
     }
 
     /// Advances `generation`, awaits every registered `Provider`, and

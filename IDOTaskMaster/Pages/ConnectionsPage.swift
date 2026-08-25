@@ -23,10 +23,13 @@ import SwiftUI
 /// than any single domain, so slower fixed cadence" reasoning, but slower
 /// still — walking every process's *entire fd table* is heavier again
 /// than `ProcessProvider`'s one-`proc_pidinfo`-call-per-pid listing) and
-/// separately owns its own `Sampler` purely for the traffic sparkline's
-/// live network throughput, the same "spin up a private `Sampler` for a
-/// live reading this page needs but doesn't otherwise poll" pattern
-/// `PowerFreqViewModel` already establishes.
+/// separately subscribes to `Sampler.shared` purely for the traffic
+/// sparkline's live network throughput — the same "read `Sampler.shared`
+/// for a live reading this page needs but doesn't otherwise poll" pattern
+/// `PowerFreqViewModel` uses, rather than a private `Sampler` that would
+/// duplicate the whole CPU/memory/GPU/.../NPU sampling round on top of
+/// whatever the info bar (and possibly another open page) is already
+/// driving for the same wall-clock tick.
 struct ConnectionsPage: View {
     @StateObject private var model = ConnectionsViewModel()
     @State private var searchText = ""
@@ -438,12 +441,14 @@ private enum Fmt {
 /// Drives `ConnectionsPage`: polls `ConnectionsProvider` on its own fixed
 /// cadence (see this file's top-of-file doc comment for why that's
 /// slower than `ProcessesViewModel`'s own 1 s poll) and separately
-/// ingests a live `Sampler` stream purely for the traffic sparkline's
+/// ingests `Sampler.shared`'s stream purely for the traffic sparkline's
 /// network-throughput history — two independent live sources feeding one
 /// page, the same shape `PerformancePage`'s rail (per-domain sparklines)
-/// and detail (the selected domain's own graph) already combine, just
-/// without a shared `Sampler` between them since this page's *table* data
-/// doesn't come from `Sampler` at all.
+/// and detail (the selected domain's own graph) already combine. The
+/// socket table still doesn't come from `Sampler` at all — only the
+/// traffic sparkline reads its stream, via the same app-wide instance
+/// every other live-data view model shares (`Sampler.shared`'s doc
+/// comment).
 @MainActor
 final class ConnectionsViewModel: ObservableObject {
     @Published private(set) var catalog: ConnectionsCatalog?
@@ -468,7 +473,7 @@ final class ConnectionsViewModel: ObservableObject {
     /// borrowing an `Interval` case that doesn't fit either.
     private static let pollInterval: TimeInterval = 3.0
 
-    private let trafficSampler = Sampler()
+    private let trafficSampler = Sampler.shared
     private var trafficTask: Task<Void, Never>?
     private static let trafficHistoryLimit = 60
 
@@ -477,13 +482,19 @@ final class ConnectionsViewModel: ObservableObject {
         startTrafficSampling()
     }
 
+    /// Ends both this view model's socket polling and its traffic
+    /// subscription. Deliberately does *not* call `trafficSampler.stop()`:
+    /// `trafficSampler` is `Sampler.shared`, and stopping it outright would
+    /// cut off every other still-active subscriber (the info bar, and
+    /// whichever other page might also be subscribed) — cancelling just
+    /// this task ends only this subscription, and `Sampler.shared` itself
+    /// goes idle on its own once the last one (of any kind) does the same,
+    /// per `removeContinuation`'s doc comment.
     func stop() {
         pollTask?.cancel()
         pollTask = nil
         trafficTask?.cancel()
         trafficTask = nil
-        let sampler = trafficSampler
-        Task { await sampler.stop() }
     }
 
     private func startSocketPolling() {

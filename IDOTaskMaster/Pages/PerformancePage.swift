@@ -290,12 +290,14 @@ private func thermalPressureLabel(_ pressure: ThermalPressureLevel) -> String {
 /// than the `@Observable` macro since this target's minimum is macOS 13.0
 /// (`@Observable` needs 14+), matching `SettingsStore`'s own convention.
 ///
-/// A fresh `Sampler` is created and torn down with this view model's
-/// lifetime rather than sharing one app-wide instance: no other page reads
-/// live data yet, and starting/stopping sampling exactly while this page is
-/// visible keeps this monitor from being its own load while the user is
-/// looking at a different page (PLAN.md §2's "lowest idle overhead"
-/// rationale).
+/// Subscribes to `Sampler.shared` — the app-wide instance also behind
+/// `AppShellStatusModel`'s info bar and every other page's own live view
+/// model (see `Sampler.shared`'s doc comment) — rather than owning a
+/// private `Sampler`: this page's `stop()` still ends *this* view model's
+/// own subscription the moment the page isn't visible (PLAN.md §2's
+/// "lowest idle overhead" rationale), it just no longer assumes it's the
+/// only consumer, since `AppShellStatusModel`'s info bar is always
+/// subscribed too whenever a window is open.
 @MainActor
 final class PerformanceViewModel: ObservableObject {
     /// Ticks of history kept per series — enough for a readable trend at
@@ -319,7 +321,7 @@ final class PerformanceViewModel: ObservableObject {
     @Published var showsStorageDetails = false
     @Published var showsConnectionDetails = false
 
-    private let sampler = Sampler()
+    private let sampler = Sampler.shared
     private var streamTask: Task<Void, Never>?
 
     /// Starts the live snapshot stream if it isn't already running. Safe
@@ -337,14 +339,19 @@ final class PerformanceViewModel: ObservableObject {
         }
     }
 
-    /// Stops the stream and the underlying `Sampler`'s tick loop. Called
-    /// from `onDisappear` so this page's own sampling doesn't keep running
-    /// (and costing CPU) while another page is showing.
+    /// Ends this view model's own subscription — called from `onDisappear`
+    /// so this page stops reading (and computing history for) live data
+    /// while another page is showing. Deliberately does *not* call
+    /// `sampler.stop()`: `sampler` is the shared instance, and stopping it
+    /// outright would cut off every other still-active subscriber (the
+    /// info bar, and whichever other page might also be subscribed) —
+    /// cancelling just this task ends only this subscription, and
+    /// `Sampler.shared` itself goes idle on its own once the last one
+    /// (of any kind) does the same, per `removeContinuation`'s doc
+    /// comment.
     func stop() {
         streamTask?.cancel()
         streamTask = nil
-        let sampler = sampler
-        Task { await sampler.stop() }
     }
 
     /// One series' full history, oldest first — `HistoryGraph`'s expected

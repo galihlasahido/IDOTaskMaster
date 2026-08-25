@@ -220,20 +220,26 @@ struct AppShell: View {
 
 // MARK: - Status model
 
-/// Owns the shared `Sampler` behind the bottom `PageInfoBar` — the same
-/// `Sampler`-per-owner lifetime pattern `SummaryViewModel`/
-/// `PerformanceViewModel` use for their own pages, except this one starts
-/// once in `AppShell.onAppear` and simply runs for the app's lifetime
-/// (never stopped) since the shell it belongs to never disappears while a
-/// window is open, unlike a page that's swapped out when the user
-/// navigates elsewhere.
+/// Subscribes to `Sampler.shared` — the app-wide instance behind the
+/// bottom `PageInfoBar` and every page's own live view model
+/// (`SummaryViewModel`, `PerformanceViewModel`, `PowerFreqViewModel`,
+/// `ConnectionsViewModel`'s traffic sparkline; see `Sampler.shared`'s doc
+/// comment for why one instance, not one per owner). This model starts
+/// once in `AppShell.onAppear` and simply keeps its subscription open for
+/// the app's lifetime (never stopped) since the shell it belongs to never
+/// disappears while a window is open, unlike a page that's swapped out
+/// when the user navigates elsewhere — that's also exactly why `stop()`
+/// is never called here: `Sampler.shared`'s tick loop must keep running
+/// for `PageInfoBar` regardless of which page (if any) is also
+/// subscribed at the moment, and `removeContinuation` only lets it go
+/// idle once *every* subscriber, this one included, has gone away.
 ///
-/// Deliberately its own `Sampler` instance rather than something pages
-/// reach into: each page already owns the one it needs for its own live
-/// data (`SummaryViewModel`'s doc comment on why that's per-visit rather
-/// than shared), and this model only ever needs the cheap, page-agnostic
-/// numbers `PageInfoBar` shows — health, process count, generation — not
-/// any page's per-domain payloads.
+/// This model only ever reads the cheap, page-agnostic numbers
+/// `PageInfoBar` shows — health, process count, generation — not any
+/// page's per-domain payloads; sharing the sampler still means computing
+/// every domain's snapshot once per tick, but that cost was already being
+/// paid to publish it, and every subscriber to that same instance rides
+/// the same publish for free.
 @MainActor
 final class AppShellStatusModel: ObservableObject {
     @Published private(set) var degradedProviderCount = 0
@@ -241,7 +247,7 @@ final class AppShellStatusModel: ObservableObject {
     @Published private(set) var processCount: Int?
     @Published private(set) var generation: UInt64?
 
-    private let sampler = Sampler()
+    private let sampler = Sampler.shared
     private var streamTask: Task<Void, Never>?
 
     /// Starts the live snapshot stream if it isn't already running. Safe

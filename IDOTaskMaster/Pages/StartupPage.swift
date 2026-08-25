@@ -165,6 +165,7 @@ struct StartupPage: View {
                 .help(item.domain.isUserToggleable
                     ? (item.isEnabled ? "Disable at login" : "Enable at login")
                     : "Only items in your own ~/Library/LaunchAgents can be toggled")
+                .accessibilityLabel("Enabled at login, \(item.displayName)")
             },
             DataTableColumn(id: "name", title: "Name", value: { $0.displayName }) { item in
                 Label {

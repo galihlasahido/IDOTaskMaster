@@ -965,10 +965,12 @@ private enum Fmt {
 
 // MARK: - View model
 
-/// Owns this page's live `Sampler` — the same lifetime pattern
-/// `PerformanceViewModel` uses (`PerformancePage.swift`'s doc comment):
-/// a fresh `Sampler` per page-visit rather than one app-wide instance, so
-/// sampling only runs while this page is actually on screen. `latest`
+/// Subscribes to `Sampler.shared` — the app-wide instance also behind
+/// `AppShellStatusModel`'s info bar and every other page's own live view
+/// model (`Sampler.shared`'s doc comment); `start()`/`stop()` still open
+/// and close only *this* view model's own subscription while this page is
+/// on screen (`PerformancePage.swift`'s `stop()` doc comment explains why
+/// that no longer means calling `sampler.stop()`). `latest`
 /// alone was enough for the first M3 task's capacity-bar readings;
 /// `cpuOverviewCard` and `memoryUtilizationBand` also need a scrolling
 /// history each, so `seriesHistory` tracks those too — the same "dotted-id
@@ -1003,7 +1005,7 @@ final class SummaryViewModel: ObservableObject {
     /// place of a guessed count (PLAN.md's "honest degradation").
     @Published private(set) var topProcessesUnavailableReason: String?
 
-    private let sampler = Sampler()
+    private let sampler = Sampler.shared
     private var streamTask: Task<Void, Never>?
 
     private let topProcessesProvider = TopProcessesProvider()
@@ -1034,14 +1036,15 @@ final class SummaryViewModel: ObservableObject {
         startTopProcessesPolling()
     }
 
-    /// Stops the stream and the underlying `Sampler`'s tick loop. Called
-    /// from `onDisappear` so this page's own sampling doesn't keep running
-    /// (and costing CPU) while another page is showing.
+    /// Ends this view model's own subscription to the shared sampler.
+    /// Called from `onDisappear` so this page stops reading live data
+    /// while another page is showing — see `PerformanceViewModel.stop()`'s
+    /// doc comment for why this cancels only this task rather than calling
+    /// `sampler.stop()`, which would end every other subscriber's stream
+    /// too.
     func stop() {
         streamTask?.cancel()
         streamTask = nil
-        let sampler = sampler
-        Task { await sampler.stop() }
 
         topProcessesTask?.cancel()
         topProcessesTask = nil

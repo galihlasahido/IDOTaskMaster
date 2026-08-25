@@ -152,6 +152,8 @@ struct ServicesPage: View {
                 .toggleStyle(.checkbox)
                 .disabled(true)
                 .help(item.isRunning ? "Running" : "Not running")
+                .accessibilityLabel("Running, \(item.label)")
+                .accessibilityValue(item.isRunning ? "Yes" : "No")
         },
         DataTableColumn(id: "name", title: "Name", value: { $0.label }) { item in
             Text(item.label)

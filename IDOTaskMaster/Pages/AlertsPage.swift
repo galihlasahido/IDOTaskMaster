@@ -211,6 +211,7 @@ struct AlertsPage: View {
                 .labelsHidden()
                 .toggleStyle(.checkbox)
                 .help(rule.isEnabled ? "Disable this rule" : "Enable this rule")
+                .accessibilityLabel("Enabled, \(rule.name)")
             },
             DataTableColumn(id: "name", title: "Name", value: { $0.name }) { rule in
                 Label {
