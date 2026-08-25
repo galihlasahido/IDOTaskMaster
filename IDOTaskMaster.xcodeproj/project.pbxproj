@@ -16,6 +16,7 @@
 		22CC578D6FEAC513750722EE /* StatTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88C8A6D7BE78B68EF7DC8D0 /* StatTile.swift */; };
 		2394A45431B245721FE740F9 /* StartupPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A196495F99DFA500D1C749E /* StartupPage.swift */; };
 		26FAF601EC944590F7F2A92E /* NPUProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A3CE67E37CE061716250E8 /* NPUProvider.swift */; };
+		7C33037EF92B9CD166E9E613 /* DiskSpaceScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 275DDC4B8E9478AA82BDB4CB /* DiskSpaceScanner.swift */; };
 		3462FF9454C981FB67F5B2D4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 19A552464A7635E7362DF790 /* Assets.xcassets */; };
 		35E5C36769ED2377D9203840 /* SidebarPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C93E1B6471439321A3EE8EAB /* SidebarPage.swift */; };
 		3C4613DF465070EA4A31CC51 /* Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3759B4CB5B6032B470CB0683 /* Snapshot.swift */; };
@@ -33,6 +34,8 @@
 		5C62DD4F715810C2EDEB5196 /* DataTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFBA4EBA43B413171C77AA1A /* DataTable.swift */; };
 		5D97DA42CE44968FA518F6A4 /* PerformancePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8532AAEB5D3526BAD3DF3041 /* PerformancePage.swift */; };
 		610F9F991861628ACEEAEDFE /* ConnectionsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F7F684DB7818A0322D43C10 /* ConnectionsPage.swift */; };
+		9BDD0906C4A949028DFE7FFE /* ConnectionsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2C1915C57E81B16CF10CF6D /* ConnectionsProvider.swift */; };
+		63575CCC11864A649EF09DE3 /* InstalledAppsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB6ED13F19C442C78FB21BC2 /* InstalledAppsProvider.swift */; };
 		63ED193381BD76261FA37421 /* PowerFreqPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1232F46C94C20E4D19D98897 /* PowerFreqPage.swift */; };
 		647BACA50770AA952AD1912C /* TopProcessesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F3DC34850C6238684F32CF /* TopProcessesProvider.swift */; };
 		6EA623FC4D46B7948C3F6863 /* SettingsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BD439063D9BBA927C87D37F /* SettingsPage.swift */; };
@@ -71,6 +74,8 @@
 		19A552464A7635E7362DF790 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A0FD592ECCE99670D21B388 /* BenchmarksPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarksPage.swift; sourceTree = "<group>"; };
 		1F7F684DB7818A0322D43C10 /* ConnectionsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionsPage.swift; sourceTree = "<group>"; };
+		D2C1915C57E81B16CF10CF6D /* ConnectionsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionsProvider.swift; sourceTree = "<group>"; };
+		BB6ED13F19C442C78FB21BC2 /* InstalledAppsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledAppsProvider.swift; sourceTree = "<group>"; };
 		203E9680B9F3139B2FFCA959 /* AlertsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsPage.swift; sourceTree = "<group>"; };
 		26F3DC34850C6238684F32CF /* TopProcessesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopProcessesProvider.swift; sourceTree = "<group>"; };
 		3759B4CB5B6032B470CB0683 /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
@@ -93,6 +98,7 @@
 		8532AAEB5D3526BAD3DF3041 /* PerformancePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformancePage.swift; sourceTree = "<group>"; };
 		9908753726CB3698AE625D0F /* EnergyProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnergyProvider.swift; sourceTree = "<group>"; };
 		99A3CE67E37CE061716250E8 /* NPUProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NPUProvider.swift; sourceTree = "<group>"; };
+		275DDC4B8E9478AA82BDB4CB /* DiskSpaceScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskSpaceScanner.swift; sourceTree = "<group>"; };
 		99D79CA6B6825B8ACC7B45AD /* InstalledAppsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledAppsPage.swift; sourceTree = "<group>"; };
 		9BD439063D9BBA927C87D37F /* SettingsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPage.swift; sourceTree = "<group>"; };
 		9E843C7FB0B46086D76BD281 /* NetworkUsagePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkUsagePage.swift; sourceTree = "<group>"; };
@@ -206,11 +212,14 @@
 			isa = PBXGroup;
 			children = (
 				69B0318F09BB95F5783B0B25 /* CPUProvider.swift */,
+				D2C1915C57E81B16CF10CF6D /* ConnectionsProvider.swift */,
 				C823B918FA41D7B40E96FB1C /* DiskProvider.swift */,
+				275DDC4B8E9478AA82BDB4CB /* DiskSpaceScanner.swift */,
 				9908753726CB3698AE625D0F /* EnergyProvider.swift */,
 				0800A0570A1ED314A9FB5EC5 /* GPUProvider.swift */,
 				702A0734F4CD8940D938682F /* MemoryProvider.swift */,
 				5F3E4CDB91772DAE53EDEB2D /* NetworkProvider.swift */,
+				BB6ED13F19C442C78FB21BC2 /* InstalledAppsProvider.swift */,
 				99A3CE67E37CE061716250E8 /* NPUProvider.swift */,
 				E504A60690DE13EC1668B422 /* ProcessProvider.swift */,
 				4D1487A7F4F74A98BAAB2D89 /* ServicesProvider.swift */,
@@ -313,8 +322,10 @@
 				3FF764B0AD46E36BDCDE7E64 /* AppShell.swift in Sources */,
 				F1E41B5EC8EDBF14DCCEEB63 /* BenchmarksPage.swift in Sources */,
 				5C5C55B99328E2BBFB6B0D72 /* CPUProvider.swift in Sources */,
+				7C33037EF92B9CD166E9E613 /* DiskSpaceScanner.swift in Sources */,
 				221444AE7113D13318C4AA05 /* CapacityBar.swift in Sources */,
 				610F9F991861628ACEEAEDFE /* ConnectionsPage.swift in Sources */,
+				9BDD0906C4A949028DFE7FFE /* ConnectionsProvider.swift in Sources */,
 				5C62DD4F715810C2EDEB5196 /* DataTable.swift in Sources */,
 				B328D56760BBB8A1E8DC4033 /* DetailPane.swift in Sources */,
 				C56FADCD5739D1507F0EFCB2 /* DiskProvider.swift in Sources */,
@@ -326,6 +337,7 @@
 				1B4CA9C41624EA85037265F8 /* HistoryPage.swift in Sources */,
 				40A7EF8A8F0BBF45861E2A7D /* IDOTaskMasterApp.swift in Sources */,
 				F09D3761EBCD018E378713D0 /* InstalledAppsPage.swift in Sources */,
+				63575CCC11864A649EF09DE3 /* InstalledAppsProvider.swift in Sources */,
 				4F0E30FB9EA0253701EEA158 /* MemoryProvider.swift in Sources */,
 				49A9BDBE01FF37CBA4A475B7 /* MetricDomain.swift in Sources */,
 				26FAF601EC944590F7F2A92E /* NPUProvider.swift in Sources */,
