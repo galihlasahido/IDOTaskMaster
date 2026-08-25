@@ -1478,14 +1478,14 @@ private struct ThermalDetailView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)], spacing: 8) {
                             ForEach(Array(sensors.enumerated()), id: \.offset) { index, sensor in
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Die \(index + 1)")
+                                    Text("Sensor \(index + 1)")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                     HistoryGraph(
                                         series: [HistoryGraphSeries(id: sensor.key, color: DomainPalette.thermal, values: model.history("thermal.sensor.\(sensor.key)"))],
                                         valueRange: 0...110,
                                         gridLineCount: 0,
-                                        accessibilityLabel: "Die \(index + 1), \(Fmt.celsius(sensor.celsius))"
+                                        accessibilityLabel: "Sensor \(index + 1), \(Fmt.celsius(sensor.celsius))"
                                     )
                                     .frame(height: 36)
                                     Text(Fmt.celsius(sensor.celsius))
