@@ -48,6 +48,9 @@ struct InstalledAppsPage: View {
             ToolbarItem(placement: .primaryAction) {
                 reloadButton
             }
+            ToolbarItem(placement: .primaryAction) {
+                ExportMenu(columns: Self.columns, rows: filteredApps, suggestedName: "Installed Apps")
+            }
         }
         .sheet(item: $pendingUninstallApp) { app in
             UninstallSheet(app: app, model: model)

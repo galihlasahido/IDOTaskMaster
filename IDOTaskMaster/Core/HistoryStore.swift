@@ -49,6 +49,17 @@ import SQLite3
 /// coarser replacement — so a plain filtered scan of the whole table is
 /// already complete, with no double-counting and no gaps.
 ///
+/// ## A second, separate table for slow-changing battery health
+/// Alongside `history_points`, this store also owns `battery_health_log` —
+/// PLAN.md §4 M10's "log cycle count/condition over time, capacity chart on
+/// Energy page." Cycle count, condition, and capacity change on the order
+/// of days-to-weeks, not this store's 30-second raw cadence, so they don't
+/// fit `history_points`' downsample-then-roll-up model at all: a row is
+/// only ever inserted when a value actually *changes*
+/// (`recordBatteryHealthIfChanged`), never on a fixed cadence, which keeps
+/// the table tiny without needing `compact`/`prune`'s aging machinery. See
+/// `BatteryHealthPoint`'s doc comment and `batteryHealthLog(limit:)`.
+///
 /// An actor, like `Sampler`: SQLite file I/O must not run on the main
 /// thread, and every operation here (recording, maintenance, querying) is
 /// naturally serialized against the one connection this way, with no
@@ -111,6 +122,36 @@ actor HistoryStore {
     struct SeriesID: Sendable, Hashable {
         let domain: Domain
         let key: String
+    }
+
+    /// One dedup'd battery-health reading `batteryHealthLog()` returns —
+    /// PLAN.md §4 M10's last task, "log cycle count/condition over time,
+    /// capacity chart on Energy page." Recorded in a separate table from
+    /// `history_points`, and only when at least one field actually changes
+    /// from the previous entry (`recordBatteryHealthIfChanged`): cycle
+    /// count, condition, and capacity genuinely change on the order of
+    /// days-to-weeks, not this store's 30-second raw cadence, so writing
+    /// one `.raw` row per tick the way `history_points` records
+    /// `energy.batteryPercent` would be almost entirely duplicate rows.
+    struct BatteryHealthPoint: Sendable, Equatable, Hashable {
+        let timestamp: Date
+        let cycleCount: Int?
+        /// `EnergyBatterySnapshot.designCapacityMAh` at this reading — see
+        /// that field's own doc comment for why this (not the `IOPSCopy...`
+        /// percent-scale figure) is the honest real-mAh unit to compute a
+        /// health ratio from.
+        let designCapacityMAh: Int?
+        /// `EnergyBatterySnapshot.fullChargeCapacityMAh` at this reading.
+        let fullChargeCapacityMAh: Int?
+        let condition: String?
+
+        /// `fullChargeCapacityMAh / designCapacityMAh * 100` — the Energy
+        /// page's capacity-trend chart itself. `nil` whenever either field
+        /// is missing, never a guessed ratio.
+        var capacityPercent: Double? {
+            guard let designCapacityMAh, designCapacityMAh > 0, let fullChargeCapacityMAh else { return nil }
+            return Double(fullChargeCapacityMAh) / Double(designCapacityMAh) * 100
+        }
     }
 
     /// The three resolutions a row can be stored/queried at — see this
@@ -188,6 +229,26 @@ actor HistoryStore {
     private var hasStarted = false
     private var sampleStreamTask: Task<Void, Never>?
     private var maintenanceTask: Task<Void, Never>?
+
+    /// One tick's worth of `EnergyBatterySnapshot`'s health fields — the
+    /// value type `recordBatteryHealthIfChanged` diffs against
+    /// `lastBatteryHealthValues` to decide whether this tick is worth a
+    /// `battery_health_log` row at all.
+    private struct BatteryHealthValues: Equatable {
+        let cycleCount: Int?
+        let designCapacityMAh: Int?
+        let fullChargeCapacityMAh: Int?
+        let condition: String?
+    }
+    /// In-memory cache of the most recently recorded `battery_health_log`
+    /// row's values, so `recordBatteryHealthIfChanged` can dedup every tick
+    /// without a `SELECT` round trip. Lazily populated from the database on
+    /// this store's first tick with any battery data at all
+    /// (`hasLoadedLastBatteryHealthValues`), so a value already logged
+    /// before the process last quit isn't re-logged as "changed" on
+    /// relaunch.
+    private var lastBatteryHealthValues: BatteryHealthValues?
+    private var hasLoadedLastBatteryHealthValues = false
 
     /// - Parameter fileURL: Where to open the SQLite database. Defaults to
     ///   `defaultDatabaseURL()`; tests should pass an isolated temporary
@@ -287,6 +348,97 @@ actor HistoryStore {
         } catch {
             lastError = error.localizedDescription
         }
+        recordBatteryHealthIfChanged(snapshot)
+    }
+
+    /// Inserts one `battery_health_log` row when `snapshot.energy?.battery`
+    /// has at least one health field that differs from the last-recorded
+    /// row (or nothing has been recorded yet) — see `BatteryHealthPoint`'s
+    /// doc comment for why this dedups on *change* rather than on this
+    /// store's own per-tick cadence. A no-op on any Mac with no battery
+    /// (`battery == nil`, e.g. Mac mini/Studio/Pro/iMac) and whenever every
+    /// one of the four fields is itself unreadable this tick — nothing
+    /// worth logging either way. Failures here set `lastError` the same way
+    /// `record`'s own `catch` does, but never throw: a battery-health
+    /// logging hiccup must not stop this tick's regular metric rows from
+    /// being recorded (already committed above by the time this runs).
+    private func recordBatteryHealthIfChanged(_ snapshot: Snapshot) {
+        guard let db, let battery = snapshot.energy?.battery else { return }
+        let values = BatteryHealthValues(
+            cycleCount: battery.cycleCount,
+            designCapacityMAh: battery.designCapacityMAh,
+            fullChargeCapacityMAh: battery.fullChargeCapacityMAh,
+            condition: battery.condition
+        )
+        guard values.cycleCount != nil || values.designCapacityMAh != nil
+            || values.fullChargeCapacityMAh != nil || values.condition != nil
+        else { return }
+
+        if !hasLoadedLastBatteryHealthValues {
+            lastBatteryHealthValues = loadLastBatteryHealthValues()
+            hasLoadedLastBatteryHealthValues = true
+        }
+        guard values != lastBatteryHealthValues else { return }
+
+        let sql = """
+        INSERT OR REPLACE INTO battery_health_log
+            (timestamp, cycle_count, design_capacity_mah, full_charge_capacity_mah, condition)
+        VALUES (?, ?, ?, ?, ?);
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            lastError = String(cString: sqlite3_errmsg(db))
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_double(stmt, 1, snapshot.timestamp.timeIntervalSince1970)
+        Self.bindOptionalInt(stmt, 2, values.cycleCount)
+        Self.bindOptionalInt(stmt, 3, values.designCapacityMAh)
+        Self.bindOptionalInt(stmt, 4, values.fullChargeCapacityMAh)
+        if let condition = values.condition {
+            sqlite3_bind_text(stmt, 5, condition, -1, Self.sqliteTransient)
+        } else {
+            sqlite3_bind_null(stmt, 5)
+        }
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            lastError = String(cString: sqlite3_errmsg(db))
+            return
+        }
+        lastBatteryHealthValues = values
+    }
+
+    /// One-shot read of the most recently logged `battery_health_log` row's
+    /// values (or `nil` if the table is empty) — how
+    /// `recordBatteryHealthIfChanged` seeds its in-memory dedup cache on
+    /// this store's first battery-bearing tick after opening.
+    private func loadLastBatteryHealthValues() -> BatteryHealthValues? {
+        guard let db else { return nil }
+        let sql = """
+        SELECT cycle_count, design_capacity_mah, full_charge_capacity_mah, condition
+        FROM battery_health_log ORDER BY timestamp DESC LIMIT 1;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return BatteryHealthValues(
+            cycleCount: Self.optionalInt(stmt, 0),
+            designCapacityMAh: Self.optionalInt(stmt, 1),
+            fullChargeCapacityMAh: Self.optionalInt(stmt, 2),
+            condition: sqlite3_column_text(stmt, 3).map { String(cString: $0) }
+        )
+    }
+
+    private static func bindOptionalInt(_ stmt: OpaquePointer?, _ index: Int32, _ value: Int?) {
+        if let value {
+            sqlite3_bind_int64(stmt, index, Int64(value))
+        } else {
+            sqlite3_bind_null(stmt, index)
+        }
+    }
+
+    private static func optionalInt(_ stmt: OpaquePointer?, _ index: Int32) -> Int? {
+        sqlite3_column_type(stmt, index) == SQLITE_NULL ? nil : Int(sqlite3_column_int64(stmt, index))
     }
 
     /// Which scalar readings this store records per domain, and under what
@@ -624,6 +776,42 @@ actor HistoryStore {
         return ids
     }
 
+    /// Every recorded `battery_health_log` row, oldest first — the query
+    /// behind PLAN.md §4 M10's "log cycle count/condition over time,
+    /// capacity chart on Energy page." Unlike `series(domain:key:since:)`,
+    /// this isn't windowed by a `Range`/`since` cutoff:
+    /// `recordBatteryHealthIfChanged` already keeps this table tiny (one
+    /// row per genuine change, not per tick), and a capacity trend is only
+    /// meaningful viewed over the battery's whole recorded lifetime, not a
+    /// 24h/7d slice. `limit` is a defensive cap, not a normal-case
+    /// constraint. Returns an empty array (never throws) — an
+    /// `EnergyDetailView` with no rows yet reads that the same honest way
+    /// `HistoryPage` reads an empty `series(...)` result, and a Mac with no
+    /// battery simply never has any rows to return.
+    func batteryHealthLog(limit: Int = 2000) -> [BatteryHealthPoint] {
+        guard let db else { return [] }
+        let sql = """
+        SELECT timestamp, cycle_count, design_capacity_mah, full_charge_capacity_mah, condition
+        FROM battery_health_log ORDER BY timestamp ASC LIMIT ?;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(limit))
+
+        var points: [BatteryHealthPoint] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            points.append(BatteryHealthPoint(
+                timestamp: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 0)),
+                cycleCount: Self.optionalInt(stmt, 1),
+                designCapacityMAh: Self.optionalInt(stmt, 2),
+                fullChargeCapacityMAh: Self.optionalInt(stmt, 3),
+                condition: sqlite3_column_text(stmt, 4).map { String(cString: $0) }
+            ))
+        }
+        return points
+    }
+
     // MARK: - Database setup
 
     /// `~/Library/Application Support/IDOTaskMaster/History.sqlite` —
@@ -685,6 +873,13 @@ actor HistoryStore {
         ) WITHOUT ROWID;
         CREATE INDEX IF NOT EXISTS idx_history_points_lookup
             ON history_points (domain, key, resolution, bucket_start);
+        CREATE TABLE IF NOT EXISTS battery_health_log (
+            timestamp REAL NOT NULL PRIMARY KEY,
+            cycle_count INTEGER,
+            design_capacity_mah INTEGER,
+            full_charge_capacity_mah INTEGER,
+            condition TEXT
+        ) WITHOUT ROWID;
         """
         guard sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK else {
             let message = String(cString: sqlite3_errmsg(db))

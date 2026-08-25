@@ -38,6 +38,15 @@ struct StartupPage: View {
             ToolbarItem(placement: .primaryAction) {
                 reloadButton
             }
+            ToolbarItem(placement: .primaryAction) {
+                ExportMenu(
+                    columns: Self.columns(toggle: { [weak model] item, enabled in
+                        model?.setEnabled(enabled, for: item)
+                    }),
+                    rows: filteredItems,
+                    suggestedName: "Startup Items"
+                )
+            }
         }
         .alert(
             "Couldn\u{2019}t Change Startup Item",

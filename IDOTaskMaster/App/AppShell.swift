@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 /// Root shell for the main window: native sidebar nav, page routing, and
@@ -45,6 +46,19 @@ struct AppShell: View {
     /// see its doc comment for the shared-`Sampler` lifetime this owns.
     @StateObject private var statusModel = AppShellStatusModel()
     @EnvironmentObject private var settings: SettingsStore
+    /// Drives the ⌘K command palette's `.sheet` below — see
+    /// `CommandPaletteController`'s own doc comment for why this is a
+    /// shared, `AppDelegate`-owned instance rather than local `@State`.
+    @EnvironmentObject private var commandPalette: CommandPaletteController
+    /// Set by the palette's `onSelectProcess` when the user jumps
+    /// straight to a process (PLAN.md §4 M10's "jump to any page or
+    /// process by name/PID"): `selection` switches to `.processes` in the
+    /// same action, and this pid rides along through `ProcessesPage`'s
+    /// own `pendingSelectionPID` binding so that page selects — and
+    /// scrolls to — the jumped-to row the moment it can find it in the
+    /// tree, whether `ProcessesPage` was already on screen or is only
+    /// being created fresh by this selection change.
+    @State private var pendingProcessSelectionPID: pid_t?
 
     var body: some View {
         NavigationSplitView {
@@ -70,6 +84,26 @@ struct AppShell: View {
         .onAppear {
             selection = settings.defaultStartPage
             statusModel.start()
+        }
+        // M10's ⌘K command palette (PLAN.md §4: "jump to any page or
+        // process by name/PID") — opened by `commandPalette.isPresented`
+        // from either `AppCommands`' menu item or the shortcut it
+        // carries. `onSelectPage`/`onSelectProcess` are this shell's own
+        // jump handlers: a page just becomes the new `selection`; a
+        // process both becomes `.processes` and hands its pid down
+        // through `pendingProcessSelectionPID` for `ProcessesPage` to
+        // pick up.
+        .sheet(isPresented: $commandPalette.isPresented) {
+            CommandPaletteView(
+                isPresented: $commandPalette.isPresented,
+                onSelectPage: { page in
+                    selection = page
+                },
+                onSelectProcess: { reading in
+                    selection = .processes
+                    pendingProcessSelectionPID = reading.pid
+                }
+            )
         }
     }
 
@@ -161,7 +195,7 @@ struct AppShell: View {
         switch page {
         case .summary: SummaryPage()
         case .performance: PerformancePage()
-        case .processes: ProcessesPage()
+        case .processes: ProcessesPage(pendingSelectionPID: $pendingProcessSelectionPID)
         case .systemInfo: SystemInfoPage()
         case .startup: StartupPage()
         case .users: UsersPage()
@@ -181,6 +215,7 @@ struct AppShell: View {
 #Preview {
     AppShell()
         .environmentObject(SettingsStore(defaults: UserDefaults(suiteName: "AppShell.preview")!))
+        .environmentObject(CommandPaletteController())
 }
 
 // MARK: - Status model

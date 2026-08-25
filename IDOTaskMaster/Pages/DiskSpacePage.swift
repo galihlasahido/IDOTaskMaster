@@ -56,6 +56,7 @@ struct DiskSpacePage: View {
             ToolbarItem(placement: .primaryAction) { chooseFolderButton }
             ToolbarItem(placement: .primaryAction) { scanButton }
             ToolbarItem(placement: .primaryAction) { revealButton }
+            ToolbarItem(placement: .primaryAction) { exportMenu }
         }
         .onDisappear { model.cancelScan() }
     }
@@ -105,6 +106,30 @@ struct DiskSpacePage: View {
         case .largestFolders: return selectedFolderID
         case .largestFiles: return selectedFileID
         case .history: return nil
+        }
+    }
+
+    /// Exports whichever of the three tab tables (PLAN.md §4 M10's "any
+    /// table \u{2192} CSV/JSON") is currently showing — the same rows/columns
+    /// `tabContent` itself renders for that tab, filtered by the toolbar's
+    /// search field the same way.
+    @ViewBuilder
+    private var exportMenu: some View {
+        switch tab {
+        case .largestFolders:
+            ExportMenu(
+                columns: Self.folderColumns,
+                rows: filteredByPath(model.result?.largestFolders ?? [], path: \.path),
+                suggestedName: "Largest Folders"
+            )
+        case .largestFiles:
+            ExportMenu(
+                columns: Self.fileColumns,
+                rows: filteredByPath(model.result?.largestFiles ?? [], path: \.path),
+                suggestedName: "Largest Files"
+            )
+        case .history:
+            ExportMenu(columns: historyColumns, rows: model.history, suggestedName: "Scan History")
         }
     }
 

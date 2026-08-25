@@ -33,6 +33,11 @@ struct NetworkUsagePage: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .pageToolbar(searchText: $searchText, searchPrompt: "Filter by Process or PID")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                ExportMenu(columns: Self.columns, rows: filteredReadings, suggestedName: "Network Usage")
+            }
+        }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }

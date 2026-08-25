@@ -22,16 +22,30 @@ struct DataTableColumn<Value: Identifiable>: Identifiable {
     /// `nil` marks a column that can't be sorted by (its header renders as
     /// plain, unclickable text) — e.g. an icon-only or actions column.
     var comparator: ((Value, Value) -> Bool)?
+    /// Renders one row's value for this column as plain text, for
+    /// `Components/Exporter.swift`'s CSV/JSON output (PLAN.md §4 M10
+    /// "Export: any table → CSV/JSON"). Kept separate from `cell` rather
+    /// than reused from it: `cell` builds a `View`, which has no general
+    /// way to be read back out as text (a colored `Label`, a `Toggle`, ...).
+    /// `nil` omits the column from every export — the honest choice for an
+    /// icon-only or checkbox column with nothing meaningful to put in a
+    /// text cell, rather than exporting an empty field. Every column built
+    /// through the `value:`-based convenience initializer below gets one
+    /// for free, derived from that same sort value, so most columns in the
+    /// app are exportable with no extra code at their call site.
+    let exportValue: ((Value) -> String)?
     let cell: (Value) -> AnyView
 
     /// General initializer: supply your own ascending two-row comparator
-    /// (or `nil` for an unsortable column).
+    /// (or `nil` for an unsortable column), and optionally your own
+    /// `exportValue` text (or `nil` to leave this column out of exports).
     init<Content: View>(
         id: String,
         title: String,
         width: CGFloat? = nil,
         alignment: HorizontalAlignment = .leading,
         comparator: ((Value, Value) -> Bool)? = nil,
+        exportValue: ((Value) -> String)? = nil,
         @ViewBuilder cell: @escaping (Value) -> Content
     ) {
         self.id = id
@@ -39,17 +53,24 @@ struct DataTableColumn<Value: Identifiable>: Identifiable {
         self.width = width
         self.alignment = alignment
         self.comparator = comparator
+        self.exportValue = exportValue
         self.cell = { AnyView(cell($0)) }
     }
 
     /// Convenience for the common case: sort ascending by a `Comparable`
-    /// property read off `Value`, e.g. `value: { $0.cpuPercent }`.
+    /// property read off `Value`, e.g. `value: { $0.cpuPercent }`. Also
+    /// backs `exportValue` with that same property's plain-text
+    /// description unless the caller supplies a nicer-formatted one — a
+    /// raw `String(describing:)` beats leaving the column out of every
+    /// export, and is exactly what a spreadsheet wants for a numeric
+    /// column like this one most often is.
     init<T: Comparable, Content: View>(
         id: String,
         title: String,
         width: CGFloat? = nil,
         alignment: HorizontalAlignment = .leading,
         value: @escaping (Value) -> T,
+        exportValue: ((Value) -> String)? = nil,
         @ViewBuilder cell: @escaping (Value) -> Content
     ) {
         self.init(
@@ -58,6 +79,7 @@ struct DataTableColumn<Value: Identifiable>: Identifiable {
             width: width,
             alignment: alignment,
             comparator: { lhs, rhs in value(lhs) < value(rhs) },
+            exportValue: exportValue ?? { String(describing: value($0)) },
             cell: cell
         )
     }

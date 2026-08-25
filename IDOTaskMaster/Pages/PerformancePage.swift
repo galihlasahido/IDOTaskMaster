@@ -565,6 +565,11 @@ private enum Fmt {
         return "\(value)"
     }
 
+    static func milliampHours(_ value: Int?) -> String {
+        guard let value else { return "Unavailable" }
+        return "\(value) mAh"
+    }
+
     static func uptime(_ interval: TimeInterval?) -> String {
         guard let interval, interval.isFinite, interval >= 0 else { return "Unavailable" }
         return uptimeFormatter.string(from: interval) ?? "Unavailable"
@@ -1192,8 +1197,24 @@ private struct ConnectionDetailsSheet: View {
 
 private struct EnergyDetailView: View {
     @ObservedObject var model: PerformanceViewModel
+    @Environment(\.historyStore) private var historyStore
+    /// This domain's slice of `HistoryStore`'s own separate
+    /// `battery_health_log` table (PLAN.md §4 M10's last task) — reloaded
+    /// on appear and every `batteryHealthRefreshInterval` while this detail
+    /// view stays visible, matching `HistoryPageViewModel`'s own
+    /// slow-polling convention for data that isn't part of the live
+    /// `Sampler` stream `model` already owns.
+    @State private var batteryHealthLog: [HistoryStore.BatteryHealthPoint] = []
+
     private var energy: EnergySnapshot? { model.latest?.energy }
     private var thermal: ThermalSnapshot? { model.latest?.thermal }
+
+    /// This store dedups on *change*, not on a fixed cadence (see
+    /// `HistoryStore.recordBatteryHealthIfChanged`'s doc comment), so
+    /// polling much slower than `HistoryPageViewModel.autoRefreshInterval`
+    /// is still plenty responsive for a reading that itself only changes
+    /// every few days.
+    private static let batteryHealthRefreshInterval: TimeInterval = 60
 
     private var powerSourceText: String {
         guard let source = energy?.powerSource else { return "Unavailable" }
@@ -1202,6 +1223,29 @@ private struct EnergyDetailView: View {
         case .batteryPower: return "Battery Power"
         case .unknown: return "Unknown"
         }
+    }
+
+    /// `fullChargeCapacityMAh / designCapacityMAh * 100`, computed straight
+    /// off the live snapshot (not the last logged row, which can lag by up
+    /// to `batteryHealthRefreshInterval`) — the same formula
+    /// `HistoryStore.BatteryHealthPoint.capacityPercent` uses for every
+    /// past reading, so the headline figure and the chart's own trailing
+    /// point read consistently.
+    private var currentCapacityPercent: Double? {
+        guard let battery = energy?.battery,
+              let designCapacityMAh = battery.designCapacityMAh, designCapacityMAh > 0,
+              let fullChargeCapacityMAh = battery.fullChargeCapacityMAh
+        else { return nil }
+        return Double(fullChargeCapacityMAh) / Double(designCapacityMAh) * 100
+    }
+
+    /// Newest-first, capped to a handful of rows — the "log ... over time"
+    /// half of this task, shown as plain text rows under the capacity
+    /// chart rather than a full `DataTable` (this table is expected to stay
+    /// tiny; see `HistoryStore`'s own doc comment on why it dedups on
+    /// change).
+    private var recentBatteryHealthLog: [HistoryStore.BatteryHealthPoint] {
+        Array(batteryHealthLog.suffix(12).reversed())
     }
 
     var body: some View {
@@ -1237,6 +1281,8 @@ private struct EnergyDetailView: View {
                     }
                 }
 
+                batteryHealthSection
+
                 DetailSection(title: "Processes With Highest Estimated Energy Demand") {
                     Text("Requires per-process energy accounting, which arrives with the Processes provider (M4).")
                         .font(.callout)
@@ -1245,7 +1291,147 @@ private struct EnergyDetailView: View {
             }
             .padding(16)
         }
+        .task {
+            await refreshBatteryHealthLog()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.batteryHealthRefreshInterval * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await refreshBatteryHealthLog()
+            }
+        }
     }
+
+    private func refreshBatteryHealthLog() async {
+        guard let historyStore else { return }
+        batteryHealthLog = await historyStore.batteryHealthLog()
+    }
+
+    // MARK: - Battery health
+
+    /// PLAN.md §4 M10's last task: "log cycle count/condition over time,
+    /// capacity chart on Energy page." `nil` on any Mac with no battery
+    /// (`energy?.battery == nil`) shows the same honest "no battery" note
+    /// every other Energy tile already gives a desktop Mac, rather than an
+    /// empty chart implying one exists.
+    @ViewBuilder
+    private var batteryHealthSection: some View {
+        if energy?.battery != nil {
+            DetailSection(title: "Battery Health") {
+                VStack(alignment: .leading, spacing: 12) {
+                    batteryHealthChart
+                    LazyVGrid(columns: statGridColumns, alignment: .leading, spacing: 12) {
+                        MetricCard(label: "Capacity (of Design)", value: Fmt.percent(currentCapacityPercent), isUnavailable: currentCapacityPercent == nil)
+                        MetricCard(label: "Design Capacity", value: Fmt.milliampHours(energy?.battery?.designCapacityMAh), isUnavailable: energy?.battery?.designCapacityMAh == nil)
+                        MetricCard(label: "Full-Charge Capacity", value: Fmt.milliampHours(energy?.battery?.fullChargeCapacityMAh), isUnavailable: energy?.battery?.fullChargeCapacityMAh == nil)
+                    }
+                    batteryHealthLogList
+                }
+            }
+        } else {
+            DetailSection(title: "Battery Health") {
+                Text("No battery on this Mac.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Full-charge capacity as a percent of design capacity, plotted across
+    /// every logged `battery_health_log` row — this task's "capacity chart
+    /// on Energy page." A flat trace near 100% early in a battery's life is
+    /// the expected, uninteresting case; what this chart is for is the slow
+    /// downward drift as cycles accumulate. Needs at least two logged
+    /// points with a readable ratio to draw a line at all
+    /// (`HistoryGraph.drawRun` skips single-point runs the same honest way
+    /// every other chart in this app does), so a fresh install shows the
+    /// placeholder below until enough history has accumulated.
+    @ViewBuilder
+    private var batteryHealthChart: some View {
+        let capacityValues = batteryHealthLog.map(\.capacityPercent)
+        if capacityValues.compactMap({ $0 }).count > 1 {
+            HistoryGraph(
+                series: [HistoryGraphSeries(id: "capacity", color: DomainPalette.energyBattery, values: capacityValues)],
+                valueRange: 0...100,
+                accessibilityLabel: "Battery capacity trend, currently \(Fmt.percent(currentCapacityPercent)) of design capacity"
+            )
+            .frame(height: 100)
+        } else {
+            VStack(spacing: 6) {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.tertiary)
+                Text("Capacity trend builds up over time as this app logs cycle count and condition changes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+        }
+    }
+
+    /// "Log cycle count/condition over time" as plain rows — most recent
+    /// first, so the newest change (what a user checking this page
+    /// actually wants to know) is always the top row.
+    @ViewBuilder
+    private var batteryHealthLogList: some View {
+        if recentBatteryHealthLog.isEmpty {
+            Text("No cycle count or condition changes logged yet.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(recentBatteryHealthLog.enumerated()), id: \.element.timestamp) { index, point in
+                    if index > 0 {
+                        Divider()
+                    }
+                    BatteryHealthLogRow(point: point)
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+}
+
+/// One `EnergyDetailView.batteryHealthLogList` row: when a change was
+/// logged, the cycle count and condition at that moment, and the capacity
+/// ratio computed from the same row — this file's equivalent of
+/// `HistoryPage`'s own `HistoryStatCard`, laid out as a table row instead
+/// of a grid cell since every field here is a short scalar.
+private struct BatteryHealthLogRow: View {
+    let point: HistoryStore.BatteryHealthPoint
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(Self.dateFormatter.string(from: point.timestamp))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 130, alignment: .leading)
+            Text(point.cycleCount.map { "Cycle \($0)" } ?? "Unavailable")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(point.cycleCount == nil ? Color(nsColor: .tertiaryLabelColor) : .primary)
+                .frame(width: 100, alignment: .leading)
+            Text(point.condition ?? "Unavailable")
+                .font(.caption)
+                .foregroundStyle(point.condition == nil ? Color(nsColor: .tertiaryLabelColor) : .primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(Fmt.percent(point.capacityPercent))
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }
 
 // MARK: - Thermal detail

@@ -62,6 +62,9 @@ struct BenchmarksPage: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) { chooseFolderButton }
+            ToolbarItem(placement: .primaryAction) {
+                ExportMenu(columns: Self.historyColumns, rows: model.history, suggestedName: "Benchmark History")
+            }
         }
         // Stops a Run All sequence from silently continuing to start its
         // next kind after this page is gone, not just the single run in

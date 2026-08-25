@@ -50,6 +50,14 @@ struct AlertsPage: View {
                 editButton
                 testButton
                 deleteButton
+                ExportMenu(
+                    columns: Self.columns(
+                        lastFired: { engine.lastFiredDate(forRuleID: $0.id) },
+                        toggle: { rule, enabled in engine.setEnabled(enabled, forRuleID: rule.id) }
+                    ),
+                    rows: filteredRules,
+                    suggestedName: "Alert Rules"
+                )
             }
         }
         .sheet(item: $editorTarget) { target in

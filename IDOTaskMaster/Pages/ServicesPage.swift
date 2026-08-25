@@ -40,6 +40,9 @@ struct ServicesPage: View {
             ToolbarItem(placement: .primaryAction) {
                 reloadButton
             }
+            ToolbarItem(placement: .primaryAction) {
+                ExportMenu(columns: Self.columns, rows: filteredItems, suggestedName: "Services")
+            }
         }
         .onAppear {
             Task { await model.loadIfNeeded() }

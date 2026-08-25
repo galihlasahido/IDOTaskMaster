@@ -52,6 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// property read directly by views: every access goes through `await`,
     /// matching how the rest of this app already reaches provider data.
     let historyStore = HistoryStore()
+    /// Shared open/closed state for the ⌘K command palette (M10's fourth
+    /// task, `App/CommandPalette.swift`). Owned here, alongside
+    /// `alertsEngine`/`historyStore`, for the same cross-scene reason:
+    /// `AppCommands`' menu item and `AppShell`'s `.sheet` both need to
+    /// read and write the *same* instance — see that type's own doc
+    /// comment.
+    let commandPalette = CommandPaletteController()
 
     private var shortcut: GlobalShortcutManager?
     private var cancellables = Set<AnyCancellable>()

@@ -91,6 +91,76 @@ enum ProcessActions {
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }
+
+    // MARK: - Extended actions (PLAN.md §4 M10)
+
+    /// Sends `SIGSTOP` — pauses the process in place without terminating
+    /// it, PLAN.md §4 M10's "Suspend/Resume (SIGSTOP/SIGCONT)". The
+    /// process's `status` reads back as `.stopped` (PLAN.md §1.1's Status
+    /// column, already rendered by `ProcessOutlineCells`/`ProcessesPage`'s
+    /// detail pane) on this provider's next tick — no separate "suspended"
+    /// flag needed anywhere else in the app.
+    static func suspend(pid: pid_t) {
+        send(signal: SIGSTOP, to: pid, actionLabel: "Suspend")
+    }
+
+    /// Sends `SIGCONT` — resumes a process previously suspended with
+    /// `suspend(pid:)` (or by any other tool, e.g. a debugger) so it
+    /// continues running from exactly where it stopped.
+    static func resume(pid: pid_t) {
+        send(signal: SIGCONT, to: pid, actionLabel: "Resume")
+    }
+
+    /// Sets `pid`'s BSD scheduling "nice" value via `setpriority(2)` —
+    /// PLAN.md §4 M10's "renice priority". `value` is a standard nice
+    /// value, -20 (highest scheduling priority) through 19 (lowest) — the
+    /// same sense `ProcessesPage.priorityLabel(_:)` already reads
+    /// `ProcessReading.niceValue` in. Lowering a process's nice value
+    /// below what it's already at (raising its priority) needs root for
+    /// any process, including this app's own child processes it would
+    /// otherwise own outright; that failure (`EACCES`/`EPERM`) surfaces
+    /// through the same alert `send(signal:to:actionLabel:)` shows for a
+    /// failed `kill(2)`, just worded for "renice" instead of a signal.
+    static func renice(pid: pid_t, to value: Int32) {
+        guard pid > 0 else { return }
+        let result = setpriority(PRIO_PROCESS, id_t(pid), value)
+        guard result != 0 else { return }
+        let failureCode = errno
+        presentFailureAlert(actionLabel: "Renice", pid: pid, errno: failureCode)
+    }
+
+    /// Sends `SIGKILL` to `node`'s process and every descendant beneath it
+    /// in the tree — PLAN.md §4 M10's "kill process tree", for a process
+    /// (e.g. a stuck browser) whose helper subprocesses would otherwise be
+    /// left running as orphans after a plain Force Quit of just the root.
+    /// Walks depth-first, killing the deepest descendants before their
+    /// ancestors, so a parent's own exit never has a chance to re-parent a
+    /// still-live child to `launchd` mid-walk (`kill(2)` itself doesn't
+    /// require this ordering, but it costs nothing and is the safer
+    /// direction). Surfaces at most one failure alert for the whole call —
+    /// the first pid that failed for a reason other than "already exited"
+    /// — rather than one alert per already-gone descendant in a large
+    /// subtree.
+    static func killTree(_ node: ProcessNode) {
+        var firstFailure: (pid: pid_t, errno: Int32)?
+        killSubtree(node, firstFailure: &firstFailure)
+        if let firstFailure {
+            presentFailureAlert(actionLabel: "Force Quit", pid: firstFailure.pid, errno: firstFailure.errno)
+        }
+    }
+
+    private static func killSubtree(_ node: ProcessNode, firstFailure: inout (pid: pid_t, errno: Int32)?) {
+        for child in node.children {
+            killSubtree(child, firstFailure: &firstFailure)
+        }
+        let pid = node.reading.pid
+        guard pid > 0 else { return }
+        guard kill(pid, SIGKILL) != 0 else { return }
+        let failureCode = errno
+        if firstFailure == nil, failureCode != ESRCH {
+            firstFailure = (pid, failureCode)
+        }
+    }
 }
 
 /// Native `NSOutlineView`-backed process tree — PLAN.md §3's
@@ -326,6 +396,13 @@ extension ProcessOutlineView {
     final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
         var parent: ProcessOutlineView
         private var displayForest: ProcessForest
+        /// The pid `restoreSelection(outlineView:)` last scrolled into
+        /// view, so a *newly* selected pid (e.g. PLAN.md §4 M10's ⌘K
+        /// command palette jumping here) gets scrolled to once, while the
+        /// same still-selected pid across this page's ~1s poll ticks
+        /// doesn't keep yanking the view back to it every reload if the
+        /// user has since scrolled elsewhere on their own.
+        private var lastScrolledSelectionPID: pid_t?
 
         init(_ parent: ProcessOutlineView) {
             self.parent = parent
@@ -402,9 +479,11 @@ extension ProcessOutlineView {
         /// `DetailPane`'s selection.
         private func restoreSelection(outlineView: NSOutlineView) {
             guard let pid = parent.selection else {
+                lastScrolledSelectionPID = nil
                 if outlineView.selectedRow >= 0 { outlineView.deselectAll(nil) }
                 return
             }
+            let isNewSelection = pid != lastScrolledSelectionPID
             for row in 0..<outlineView.numberOfRows {
                 guard
                     let item = outlineView.item(atRow: row) as? ProcessOutlineItem,
@@ -413,6 +492,10 @@ extension ProcessOutlineView {
                 else { continue }
                 if outlineView.selectedRow != row {
                     outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                }
+                if isNewSelection {
+                    outlineView.scrollRowToVisible(row)
+                    lastScrolledSelectionPID = pid
                 }
                 return
             }
@@ -427,7 +510,12 @@ extension ProcessOutlineView {
         /// rather than duplicating it. Reveal/Copy Path disable themselves
         /// when this node has no `executablePath` (another user's process
         /// this app couldn't read a path for) instead of acting on
-        /// nothing.
+        /// nothing; the same goes for Kill Process Tree when `node` has no
+        /// children (Force Quit above it already covers a childless
+        /// process). Suspend/Resume swap which one shows based on this
+        /// node's *current* status — PLAN.md §4 M10's "Suspend/Resume
+        /// (SIGSTOP/SIGCONT)" — and Priority opens a submenu of common nice
+        /// values plus a "Custom…" prompt for M10's "renice priority".
         fileprivate func contextMenu(for node: ProcessNode) -> NSMenu {
             let reading = node.reading
             let menu = NSMenu()
@@ -436,24 +524,37 @@ extension ProcessOutlineView {
             menu.addItem(actionItem(
                 title: "Quit \u{201C}\(processLabel)\u{201D}",
                 action: #selector(handleQuit(_:)),
-                reading: reading
+                representedObject: reading
             ))
             menu.addItem(actionItem(
                 title: "Force Quit",
                 action: #selector(handleForceQuit(_:)),
-                reading: reading
+                representedObject: reading
             ))
+            menu.addItem(actionItem(
+                title: "Kill Process Tree",
+                action: #selector(handleKillTree(_:)),
+                representedObject: node,
+                enabled: !node.children.isEmpty
+            ))
+            menu.addItem(.separator())
+            menu.addItem(actionItem(
+                title: reading.status == .stopped ? "Resume" : "Suspend",
+                action: reading.status == .stopped ? #selector(handleResume(_:)) : #selector(handleSuspend(_:)),
+                representedObject: reading
+            ))
+            menu.addItem(priorityMenuItem(for: reading))
             menu.addItem(.separator())
             menu.addItem(actionItem(
                 title: "Reveal in Finder",
                 action: #selector(handleReveal(_:)),
-                reading: reading,
+                representedObject: reading,
                 enabled: reading.executablePath != nil
             ))
             menu.addItem(actionItem(
                 title: "Copy Path",
                 action: #selector(handleCopyPath(_:)),
-                reading: reading,
+                representedObject: reading,
                 enabled: reading.executablePath != nil
             ))
             return menu
@@ -462,12 +563,12 @@ extension ProcessOutlineView {
         private func actionItem(
             title: String,
             action: Selector,
-            reading: ProcessReading,
+            representedObject: Any,
             enabled: Bool = true
         ) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
-            item.representedObject = reading
+            item.representedObject = representedObject
             item.isEnabled = enabled
             return item
         }
@@ -490,6 +591,93 @@ extension ProcessOutlineView {
         @objc private func handleCopyPath(_ sender: NSMenuItem) {
             guard let reading = sender.representedObject as? ProcessReading else { return }
             ProcessActions.copyPath(reading.executablePath)
+        }
+
+        @objc private func handleSuspend(_ sender: NSMenuItem) {
+            guard let reading = sender.representedObject as? ProcessReading else { return }
+            ProcessActions.suspend(pid: reading.pid)
+        }
+
+        @objc private func handleResume(_ sender: NSMenuItem) {
+            guard let reading = sender.representedObject as? ProcessReading else { return }
+            ProcessActions.resume(pid: reading.pid)
+        }
+
+        @objc private func handleKillTree(_ sender: NSMenuItem) {
+            guard let node = sender.representedObject as? ProcessNode else { return }
+            ProcessActions.killTree(node)
+        }
+
+        // MARK: Priority submenu
+
+        /// One "Priority" `NSMenuItem` holding a submenu of common nice
+        /// values (checkmarked if it matches `reading.niceValue`) plus a
+        /// "Custom…" item for any value in the valid -20...19 range — PLAN.md
+        /// §4 M10's "renice priority", surfaced as a submenu rather than a
+        /// flat run of top-level items so it doesn't crowd the rest of this
+        /// menu.
+        private func priorityMenuItem(for reading: ProcessReading) -> NSMenuItem {
+            let item = NSMenuItem(title: "Priority", action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            let levels: [(title: String, value: Int32)] = [
+                ("High (-10)", -10),
+                ("Normal (0)", 0),
+                ("Low (10)", 10),
+            ]
+            for level in levels {
+                let levelItem = actionItem(
+                    title: level.title,
+                    action: #selector(handleRenice(_:)),
+                    representedObject: PriorityChange(pid: reading.pid, value: level.value)
+                )
+                levelItem.state = Int32(reading.niceValue) == level.value ? .on : .off
+                submenu.addItem(levelItem)
+            }
+            submenu.addItem(.separator())
+            submenu.addItem(actionItem(
+                title: "Custom\u{2026}",
+                action: #selector(handleReniceCustom(_:)),
+                representedObject: reading
+            ))
+            item.submenu = submenu
+            return item
+        }
+
+        @objc private func handleRenice(_ sender: NSMenuItem) {
+            guard let change = sender.representedObject as? PriorityChange else { return }
+            ProcessActions.renice(pid: change.pid, to: change.value)
+        }
+
+        /// "Custom…"'s prompt: a plain `NSAlert` with a single numeric text
+        /// field, pre-filled with this process's current nice value — the
+        /// same lightweight accessory-view-alert pattern the rest of this
+        /// file already uses for its failure alerts, rather than pulling in
+        /// a SwiftUI sheet for one text field on an otherwise AppKit view.
+        @objc private func handleReniceCustom(_ sender: NSMenuItem) {
+            guard let reading = sender.representedObject as? ProcessReading else { return }
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "Set Priority for \u{201C}\(reading.name ?? "Process \(reading.pid)")\u{201D}"
+            alert.informativeText = "Enter a nice value from -20 (highest priority) to 19 (lowest)."
+            alert.addButton(withTitle: "Set")
+            alert.addButton(withTitle: "Cancel")
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+            field.stringValue = String(reading.niceValue)
+            alert.accessoryView = field
+            alert.window.initialFirstResponder = field
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+            let trimmed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let value = Int32(trimmed), (-20...19).contains(value) else {
+                let invalidAlert = NSAlert()
+                invalidAlert.alertStyle = .warning
+                invalidAlert.messageText = "Invalid Priority Value"
+                invalidAlert.informativeText = "Enter a whole number from -20 to 19."
+                invalidAlert.addButton(withTitle: "OK")
+                invalidAlert.runModal()
+                return
+            }
+            ProcessActions.renice(pid: reading.pid, to: value)
         }
 
         // MARK: Tree contents
@@ -562,6 +750,17 @@ extension ProcessOutlineView {
             return ProcessOutlineCells.textCell(outlineView: outlineView, columnID: tableColumn.identifier.rawValue, reading: node.reading)
         }
     }
+}
+
+// MARK: - Priority menu payload
+
+/// `Coordinator.priorityMenuItem(for:)`'s `representedObject` for a fixed
+/// (non-custom) nice-value menu item — just enough to carry both the
+/// target pid and the value `handleRenice(_:)` should apply, since
+/// `NSMenuItem.representedObject` only holds one value per item.
+private struct PriorityChange {
+    let pid: pid_t
+    let value: Int32
 }
 
 // MARK: - Outline item identity

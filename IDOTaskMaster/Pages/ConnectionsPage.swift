@@ -59,6 +59,11 @@ struct ConnectionsPage: View {
             }
         }
         .pageToolbar(searchText: $searchText, searchPrompt: "Filter by App, Address, or Port")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                ExportMenu(columns: Self.columns, rows: filteredSockets, suggestedName: "Connections")
+            }
+        }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }

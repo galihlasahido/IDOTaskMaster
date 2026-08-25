@@ -30,6 +30,15 @@ import SwiftUI
 /// exposed by any public macOS API) render "Unavailable" per PLAN.md's
 /// honest-degradation rule rather than a guess.
 ///
+/// A segmented `detailTabPicker` splits that bottom area into two tabs —
+/// PLAN.md §4 M10's "Open Files & Ports tab in process detail (lsof-style,
+/// like Activity Monitor's Inspect window)" — "Info" (the `DetailPane`
+/// above) and "Open Files & Ports" (`openFilesPortsPane`, a `DataTable` of
+/// `OpenFileEntry` rows polled from `OpenFilesProvider` by
+/// `OpenFilesViewModel`, only while that tab is the one showing for the
+/// current selection — see `syncOpenFilesPolling()`'s own doc comment for
+/// why it isn't polled unconditionally alongside `ProcessesViewModel`).
+///
 /// The toolbar's ⓧ button (PLAN.md §4 M4's "Actions: Quit, Force Quit,
 /// Reveal in Finder, Copy path (context menu + toolbar)") is wired to
 /// `selectedPID`: clicking it opens `quitConfirmation`, a native
@@ -43,6 +52,15 @@ import SwiftUI
 /// (`inspectAction` left `nil`) — this app's always-visible detail pane
 /// below already fills the role a separate Inspect window would.
 struct ProcessesPage: View {
+    /// Set by `AppShell` when the ⌘K command palette (PLAN.md §4 M10,
+    /// `App/CommandPalette.swift`) jumps straight to a process: the pid
+    /// to select the moment this page can. `applyPendingSelection()`
+    /// consumes it (writing `selectedPID`, then clearing this binding
+    /// back to `nil`) from both `.onAppear` — covering the case this page
+    /// is only being created *because* of the jump — and
+    /// `.onChange(of: pendingSelectionPID)` — covering the case this page
+    /// was already the visible one when a second jump landed on it.
+    @Binding var pendingSelectionPID: pid_t?
     @StateObject private var model = ProcessesViewModel()
     @State private var searchText = ""
     /// Starts CPU % descending, matching `SummaryPage`'s own top-processes
@@ -57,6 +75,17 @@ struct ProcessesPage: View {
     /// selection change (or the process itself exiting) while the dialog
     /// is open can't retarget which process "Quit"/"Force Quit" acts on.
     @State private var pendingQuitPID: pid_t?
+    /// Which of the bottom area's two tabs is showing — see this file's
+    /// own doc comment for `detailTabPicker`/`openFilesPortsPane`.
+    @State private var detailTab: ProcessDetailTab = .info
+    @StateObject private var openFilesModel = OpenFilesViewModel()
+    /// Backs the Identity section's "Signing" field — PLAN.md §4 M10's
+    /// "`SigningInfoProvider`: code-signing status (signed/notarized/
+    /// unsigned, team ID) shown in process detail". Fetched lazily per
+    /// selected pid (`syncSigningInfoLoad()`), not on a poll loop — see
+    /// `SigningInfoProvider`'s own doc comment for why.
+    @StateObject private var signingModel = SigningInfoViewModel()
+    @State private var openFilesSort: DataTableSort? = DataTableSort(columnID: "fd", ascending: true)
     /// Fixed detail-pane height, matching PLAN.md §1.1's "Detail pane
     /// (bottom)" placement — tall enough to show all five sections'
     /// header rows (Identity/Lifetime/Processor/Memory/Disk) without
@@ -68,7 +97,7 @@ struct ProcessesPage: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
-            detailPane
+            detailArea
                 .frame(height: Self.detailPaneHeight)
         }
         .pageToolbar(
@@ -77,9 +106,57 @@ struct ProcessesPage: View {
             showsProcessActions: true,
             quitAction: selectedPID.map { pid in { pendingQuitPID = pid } }
         )
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                ExportMenu(
+                    columns: Self.openFilesColumns,
+                    rows: openFilesModel.catalog?.entries ?? [],
+                    suggestedName: "Open Files"
+                )
+            }
+        }
         .quitConfirmationDialog(pendingPID: $pendingQuitPID, name: pendingQuitProcessName)
-        .onAppear { model.start() }
-        .onDisappear { model.stop() }
+        .onAppear {
+            model.start()
+            syncOpenFilesPolling()
+            signingModel.load(pid: selectedPID)
+            applyPendingSelection()
+        }
+        .onDisappear {
+            model.stop()
+            openFilesModel.stop()
+        }
+        .onChange(of: selectedPID) { pid in
+            syncOpenFilesPolling()
+            signingModel.load(pid: pid)
+        }
+        .onChange(of: detailTab) { _ in syncOpenFilesPolling() }
+        .onChange(of: pendingSelectionPID) { _ in applyPendingSelection() }
+    }
+
+    /// Consumes `pendingSelectionPID` — see that property's own doc
+    /// comment for the two call sites this covers. A no-op whenever
+    /// nothing is pending, so it's safe to call unconditionally from both.
+    private func applyPendingSelection() {
+        guard let pid = pendingSelectionPID else { return }
+        selectedPID = pid
+        pendingSelectionPID = nil
+    }
+
+    /// Starts/stops `openFilesModel`'s polling loop to track exactly
+    /// "Open Files & Ports" tab visible + a process selected — the same
+    /// "only poll a heavier per-selection reading while its own view is
+    /// actually on screen" discipline `ConnectionsPage`'s traffic sampler
+    /// and `PerformancePage`'s per-domain detail graphs already follow,
+    /// so switching back to the "Info" tab (or clearing the selection)
+    /// stops walking the previously-selected process's fd table every
+    /// tick for no reason.
+    private func syncOpenFilesPolling() {
+        guard detailTab == .openFiles, let pid = selectedPID else {
+            openFilesModel.stop()
+            return
+        }
+        openFilesModel.start(pid: pid)
     }
 
     /// `pendingQuitPID`'s display name for the confirmation dialog's
@@ -131,8 +208,41 @@ struct ProcessesPage: View {
         return Dictionary(uniqueKeysWithValues: forest.all.map { ($0.pid, $0) })
     }
 
+    /// The bottom area as a whole: `detailTabPicker` over whichever of
+    /// `infoDetailPane`/`openFilesPortsPane` `detailTab` selects.
+    private var detailArea: some View {
+        VStack(spacing: 0) {
+            detailTabPicker
+            Divider()
+            Group {
+                switch detailTab {
+                case .info: infoDetailPane
+                case .openFiles: openFilesPortsPane
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// Native stand-in for Activity Monitor's separate Inspect *window*
+    /// tabs — this app keeps one always-visible bottom pane rather than a
+    /// second window (see this file's own top-of-file doc comment on why
+    /// ⓘ Inspect stays disabled), so the tab switch lives here instead.
+    private var detailTabPicker: some View {
+        Picker("Detail Tab", selection: $detailTab) {
+            ForEach(ProcessDetailTab.allCases) { tab in
+                Text(tab.title).tag(tab)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
     @ViewBuilder
-    private var detailPane: some View {
+    private var infoDetailPane: some View {
         if let pid = selectedPID, let reading = readingsByPID[pid] {
             DetailPane(
                 title: reading.name ?? "PID \(reading.pid)",
@@ -144,6 +254,101 @@ struct ProcessesPage: View {
             DetailPane(emptyMessage: "Select a process to view its details.")
         }
     }
+
+    // MARK: - Open Files & Ports tab
+
+    /// PLAN.md §4 M10's "Open Files & Ports tab in process detail
+    /// (lsof-style, like Activity Monitor's Inspect window)" — a compact
+    /// `DataTable` of `OpenFileEntry` rows (FD / Kind / Name) for
+    /// `selectedPID`, polled by `openFilesModel` only while this tab is
+    /// the one showing (`syncOpenFilesPolling()`).
+    @ViewBuilder
+    private var openFilesPortsPane: some View {
+        if selectedPID == nil {
+            DetailPane(emptyMessage: "Select a process to view its open files and ports.")
+        } else if let catalog = openFilesModel.catalog {
+            VStack(spacing: 0) {
+                openFilesStatusLine(catalog)
+                Divider()
+                DataTable(
+                    columns: Self.openFilesColumns,
+                    rows: catalog.entries,
+                    sort: $openFilesSort,
+                    rowHeight: 18,
+                    emptyMessage: "No open files or ports."
+                )
+            }
+        } else if let reason = openFilesModel.unavailableReason {
+            openFilesUnavailableState(reason: reason)
+        } else {
+            openFilesLoadingState
+        }
+    }
+
+    private func openFilesStatusLine(_ catalog: OpenFilesCatalog) -> some View {
+        let count = catalog.entries.count
+        let countText = count == 1 ? "1 open file/port" : "\(count) open files/ports"
+        return HStack(spacing: 4) {
+            Text("\(countText) \u{2014} as of \(Self.timeFormatter.string(from: catalog.generatedAt))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var openFilesLoadingState: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+            Text("Reading open files\u{2026}")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func openFilesUnavailableState(reason: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.secondary)
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private static let openFilesColumns: [DataTableColumn<OpenFileEntry>] = [
+        DataTableColumn(id: "fd", title: "FD", width: 40, alignment: .trailing, value: { $0.descriptor }) { entry in
+            Text("\(entry.descriptor)").monospacedDigit()
+        },
+        DataTableColumn(id: "kind", title: "Kind", width: 92, value: { $0.kind }) { entry in
+            Text(entry.kind)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        },
+        DataTableColumn(id: "name", title: "Name", value: { $0.name ?? "" }) { entry in
+            Text(entry.name ?? "Unavailable")
+                .foregroundStyle(entry.name == nil ? Color(nsColor: .tertiaryLabelColor) : .primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        },
+    ]
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
 
     /// Builds the Identity/Lifetime/Processor/Memory/Disk sections PLAN.md
     /// §1.1 calls for out of one `ProcessReading` — see this file's own
@@ -160,6 +365,7 @@ struct ProcessesPage: View {
                 DetailPaneField(label: "Status", value: reading.status.displayLabel),
                 DetailPaneField(label: "Architecture", value: architectureValue ?? "", isUnavailable: architectureValue == nil),
             ]),
+            signingSection(for: reading),
             DetailPaneSection(title: "Lifetime", fields: [
                 DetailPaneField(label: "Started", value: Fmt.startedAt(reading.startedAt)),
                 DetailPaneField(label: "Uptime", value: Fmt.uptime(uptimeInterval), isMonospaced: true),
@@ -224,6 +430,36 @@ struct ProcessesPage: View {
     private func architecture(for reading: ProcessReading) -> String? {
         guard let path = reading.executablePath else { return nil }
         return model.architectureLabel(forExecutablePath: path)
+    }
+
+    /// PLAN.md §4 M10's "`SigningInfoProvider`: code-signing status
+    /// (signed/notarized/unsigned, team ID) shown in process detail" — a
+    /// standalone section rather than folded into Identity, since it's the
+    /// one set of fields backed by its own separate (lazily-loaded, not
+    /// per-tick) provider read. While that read is still in flight for
+    /// `reading.pid` (`signingModel.info(for:)` returns `nil`), every field
+    /// shows the same "Unavailable" placeholder the pane already uses for
+    /// any other not-yet-known value — it flips to real data the moment
+    /// `SigningInfoViewModel`'s `@Published` cache fills in, no separate
+    /// loading state needed for four short-lived fields.
+    private func signingSection(for reading: ProcessReading) -> DetailPaneSection {
+        let info = signingModel.info(for: reading.pid)
+        return DetailPaneSection(title: "Signing", fields: [
+            DetailPaneField(label: "Status", value: info?.statusLabel ?? "", isUnavailable: info == nil),
+            DetailPaneField(label: "Notarized", value: notarizedLabel(info?.isNotarized), isUnavailable: info?.isNotarized == nil),
+            DetailPaneField(label: "Team ID", value: info?.teamIdentifier ?? "", isUnavailable: info?.teamIdentifier == nil, isMonospaced: true),
+            DetailPaneField(label: "Signing ID", value: info?.signingIdentifier ?? "", isUnavailable: info?.signingIdentifier == nil),
+        ])
+    }
+
+    /// "Yes"/"No" for a definite notarization read, "Unavailable" for `nil`
+    /// (still loading, or not a meaningful question for this code — see
+    /// `SigningInfo.isNotarized`'s own doc comment for exactly when that
+    /// is) — `DetailPaneField.isUnavailable` renders that last case the
+    /// same dimmed way regardless of which of the two `nil` reasons it is.
+    private func notarizedLabel(_ isNotarized: Bool?) -> String {
+        guard let isNotarized else { return "" }
+        return isNotarized ? "Yes" : "No"
     }
 
     // MARK: - Non-tree states
@@ -352,6 +588,24 @@ private extension View {
     }
 }
 
+// MARK: - Detail tabs
+
+/// `ProcessesPage`'s bottom-area tabs — see that type's own doc comment
+/// for `detailTabPicker`.
+private enum ProcessDetailTab: CaseIterable, Identifiable, Hashable {
+    case info
+    case openFiles
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .info: return "Info"
+        case .openFiles: return "Open Files & Ports"
+        }
+    }
+}
+
 // MARK: - View model
 
 /// Polls `ProcessProvider` on its own cadence, independent of any
@@ -422,6 +676,115 @@ final class ProcessesViewModel: ObservableObject {
     func stop() {
         pollTask?.cancel()
         pollTask = nil
+    }
+}
+
+/// Drives `openFilesPortsPane`: polls `OpenFilesProvider` for one pid at a
+/// time, started/stopped by `ProcessesPage.syncOpenFilesPolling()` rather
+/// than running continuously the way `ProcessesViewModel` does — see that
+/// method's own doc comment for why. `start(pid:)` is safe to call again
+/// with a different pid while already polling (e.g. the selection changed
+/// while the Open Files & Ports tab was already showing): it tears down
+/// the previous loop and clears the previous pid's stale `catalog` first,
+/// so the pane never briefly shows one process's fd table under another's
+/// title.
+@MainActor
+final class OpenFilesViewModel: ObservableObject {
+    @Published private(set) var catalog: OpenFilesCatalog?
+    /// Same "one bad tick doesn't blank an otherwise-good table" rule as
+    /// `ProcessesViewModel.unavailableReason`'s own doc comment, except
+    /// `start(pid:)` itself always clears both this and `catalog` up
+    /// front — a *pid change* should blank the table (it's a different
+    /// process's data now stale), only a same-pid poll failure should
+    /// leave a still-good `catalog` in place.
+    @Published private(set) var unavailableReason: String?
+
+    private let provider = OpenFilesProvider()
+    private var pollTask: Task<Void, Never>?
+    /// Slower than `ProcessesViewModel.pollInterval`: walking one
+    /// process's whole fd table (and, for every socket fd, its kernel
+    /// state) is heavier than that view model's single `proc_pidinfo`
+    /// call per pid, and this reading is only ever needed for the one
+    /// process currently showing the Open Files & Ports tab.
+    private static let pollInterval: TimeInterval = 2.0
+
+    func start(pid: pid_t) {
+        pollTask?.cancel()
+        catalog = nil
+        unavailableReason = nil
+
+        let provider = provider
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    let result = try await provider.openFiles(forPID: pid)
+                    guard let self, !Task.isCancelled else { return }
+                    self.catalog = result
+                    self.unavailableReason = nil
+                } catch {
+                    guard let self, !Task.isCancelled else { return }
+                    self.unavailableReason = error.localizedDescription
+                }
+                guard !Task.isCancelled else { return }
+                try? await Task.sleep(nanoseconds: UInt64(Self.pollInterval * 1_000_000_000))
+            }
+        }
+    }
+
+    func stop() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+}
+
+/// Backs `ProcessesPage.signingSection(for:)`: fetches `SigningInfoProvider`
+/// once per pid rather than polling it, matching that provider's own doc
+/// comment on why (a running process's signing identity doesn't change out
+/// from under it the way its CPU/memory readings do, and a full signature
+/// verification is too heavy to repeat every tick). Results are cached in
+/// `infoByPID` for the life of this view model — like `ProcessesViewModel
+/// .architectureCache`, entries are never evicted, bounded in practice by
+/// however many distinct processes the user actually selects in one
+/// session, not by how often they're re-selected.
+@MainActor
+final class SigningInfoViewModel: ObservableObject {
+    @Published private(set) var infoByPID: [pid_t: SigningInfo] = [:]
+
+    private let provider = SigningInfoProvider()
+    /// Pids with a fetch currently in flight, so `load(pid:)` called again
+    /// for one already being fetched (e.g. a SwiftUI re-render re-reading
+    /// `signingModel.info(for:)` while that fetch hasn't finished yet, or
+    /// the user re-selecting a pid whose earlier fetch is still running)
+    /// doesn't spawn a redundant second `Task`. A `Set`, not a single
+    /// scalar: switching the selection back and forth (A → B → A) before
+    /// either finishes leaves both A's and B's fetches running
+    /// independently — each writes its own `infoByPID[pid]` key, so
+    /// there's nothing to cancel or serialize between them.
+    private var pendingPIDs: Set<pid_t> = []
+
+    /// The cached reading for `pid`, or `nil` while it's still loading (or
+    /// hasn't been requested at all — `ProcessesPage` always calls
+    /// `load(pid:)` on selection change before this is read, so that
+    /// second case is transient). Doesn't itself trigger a fetch — reading
+    /// a `@Published` property from inside view *body* evaluation should
+    /// stay side-effect-free; `load(pid:)` is the one place that starts
+    /// work, called from `.onAppear`/`.onChange(of: selectedPID)` instead.
+    func info(for pid: pid_t) -> SigningInfo? {
+        infoByPID[pid]
+    }
+
+    /// Starts a fetch for `pid` unless it's already cached or already in
+    /// flight. `pid == nil` (nothing selected) is a no-op.
+    func load(pid: pid_t?) {
+        guard let pid, infoByPID[pid] == nil, !pendingPIDs.contains(pid) else { return }
+        pendingPIDs.insert(pid)
+        let provider = provider
+        Task { [weak self] in
+            let result = await provider.signingInfo(forPID: pid)
+            guard let self else { return }
+            self.infoByPID[pid] = result
+            self.pendingPIDs.remove(pid)
+        }
     }
 }
 
@@ -594,6 +957,6 @@ private enum ExecutableArchitecture {
 }
 
 #Preview {
-    ProcessesPage()
+    ProcessesPage(pendingSelectionPID: .constant(nil))
         .frame(width: 900, height: 640)
 }

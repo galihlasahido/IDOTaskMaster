@@ -36,6 +36,11 @@ struct IDOTaskMasterApp: App {
             AppShell()
                 .environmentObject(appDelegate.settings)
                 .environmentObject(appDelegate.alertsEngine)
+                // M10's ⌘K command palette (`App/CommandPalette.swift`):
+                // `AppShell` reads this to drive its `.sheet`, and
+                // `AppCommands` below drives the same instance's
+                // `isPresented` from its "Command Palette…" menu item.
+                .environmentObject(appDelegate.commandPalette)
                 // `HistoryStore` is an `actor`, not an `ObservableObject`,
                 // so it rides the plain environment (see
                 // `EnvironmentValues.historyStore` in `Pages/HistoryPage.swift`)
@@ -52,7 +57,7 @@ struct IDOTaskMasterApp: App {
         .defaultSize(width: 1280, height: 860)
         .defaultPosition(.center)
         .commands {
-            AppCommands(settings: appDelegate.settings)
+            AppCommands(settings: appDelegate.settings, commandPalette: appDelegate.commandPalette)
         }
 
         Settings {

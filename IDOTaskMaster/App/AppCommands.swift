@@ -42,9 +42,23 @@ import SwiftUI
 /// `ProcessProvider` exists in M4).
 struct AppCommands: Commands {
     @ObservedObject var settings: SettingsStore
+    /// Drives M10's fourth task (PLAN.md §4: "⌘K command palette: jump to
+    /// any page or process by name/PID") — this menu item is the
+    /// discoverable, Edit-menu-adjacent counterpart to the shortcut
+    /// itself; both just call `commandPalette.present()`, the same "one
+    /// shared instance, several triggers" pattern `settings.updateSpeed`
+    /// already uses for its own menu item + Settings-window pair.
+    @ObservedObject var commandPalette: CommandPaletteController
 
     var body: some Commands {
         CommandGroup(before: .toolbar) {
+            Button("Command Palette\u{2026}") {
+                commandPalette.present()
+            }
+            .keyboardShortcut("k", modifiers: .command)
+
+            Divider()
+
             Menu("Update Frequency") {
                 frequencyToggle(.fast, shortcut: "1")
                 frequencyToggle(.normal, shortcut: "2")

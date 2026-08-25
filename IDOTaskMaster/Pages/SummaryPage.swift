@@ -94,6 +94,25 @@ struct SummaryPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
+        // PLAN.md §4 M10's fifth task: a CSV/JSON export for
+        // `topProcessesCard`'s own table, plus the one-click system
+        // snapshot report — this is the one page whose `SummaryViewModel`
+        // already keeps a full cross-domain `Snapshot` (`model.latest`)
+        // alongside the top-processes list `SnapshotReportButton` also
+        // folds in, rather than a single domain the way every other page
+        // does (see `Components/Exporter.swift`'s own doc comment).
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                ExportMenu(columns: Self.topProcessColumns, rows: model.topProcesses, suggestedName: "Top CPU Processes")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                SnapshotReportButton(
+                    snapshot: model.latest,
+                    topProcesses: model.topProcesses,
+                    liveProcessCount: model.processCount
+                )
+            }
+        }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }
@@ -339,19 +358,19 @@ struct SummaryPage: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         },
-        DataTableColumn(id: "cpu", title: "CPU %", width: 58, alignment: .trailing, value: { $0.cpuPercent ?? -1 }) { row in
+        DataTableColumn(id: "cpu", title: "CPU %", width: 58, alignment: .trailing, value: { $0.cpuPercent ?? -1 }, exportValue: { Fmt.percentPrecise($0.cpuPercent) }) { row in
             Text(Fmt.percentPrecise(row.cpuPercent))
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(topProcessCPUColor(row.cpuPercent))
         },
-        DataTableColumn(id: "gpu", title: "GPU", width: 46, alignment: .trailing, value: { $0.gpuPercent ?? -1 }) { row in
+        DataTableColumn(id: "gpu", title: "GPU", width: 46, alignment: .trailing, value: { $0.gpuPercent ?? -1 }, exportValue: { Fmt.percentPrecise($0.gpuPercent) }) { row in
             Text(Fmt.percentPrecise(row.gpuPercent))
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
         },
-        DataTableColumn(id: "memory", title: "Memory", width: 72, alignment: .trailing, value: { $0.memoryBytes ?? 0 }) { row in
+        DataTableColumn(id: "memory", title: "Memory", width: 72, alignment: .trailing, value: { $0.memoryBytes ?? 0 }, exportValue: { Fmt.bytes($0.memoryBytes) }) { row in
             Text(Fmt.bytes(row.memoryBytes))
                 .font(.caption)
                 .monospacedDigit()
