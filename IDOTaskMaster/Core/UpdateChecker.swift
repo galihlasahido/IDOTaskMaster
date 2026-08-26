@@ -20,7 +20,10 @@ import Foundation
 /// developer" right-click-Open, same as every release so far) stays
 /// exactly as manual as it's always been, matching the "explicit user
 /// action for anything that changes local state" pattern Clean Up and
-/// Installed Apps' uninstall already follow.
+/// Installed Apps' uninstall already follow. It does quit the app itself
+/// a moment after opening the DMG, though — see `downloadAndOpenInstaller`
+/// — since a running app can't have its own bundle overwritten by the
+/// drag-and-drop that's about to happen.
 ///
 /// Owned by `AppDelegate` alongside `alertsEngine`/`networkMonitor` so a
 /// launch-time check (when `checkForUpdatesOnLaunch` is on) has already
@@ -103,7 +106,11 @@ final class UpdateChecker: ObservableObject {
     /// Downloads `url` (the universal `.dmg` asset from `lastResult`) to
     /// the user's Downloads folder and opens it — see this type's own doc
     /// comment for why that, not a silent in-place replace, is as far as
-    /// this goes.
+    /// this goes. Quits the app shortly after the DMG opens, so it isn't
+    /// still running (and holding its own bundle in place) by the time the
+    /// user drags the new one over it in the Finder window that just
+    /// appeared — the same reason Finder can't overwrite an app while it's
+    /// open.
     func downloadAndOpenInstaller(from url: URL) async {
         downloadState = .downloading
 
@@ -128,6 +135,12 @@ final class UpdateChecker: ObservableObject {
 
             downloadState = .idle
             NSWorkspace.shared.open(destination)
+
+            // Give the Finder/DiskImages round trip a moment to actually
+            // start mounting before this process disappears out from under
+            // it.
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            NSApp.terminate(nil)
         } catch {
             downloadState = .failed(error.localizedDescription)
         }
