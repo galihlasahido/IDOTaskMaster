@@ -42,6 +42,7 @@ struct IDOTaskMasterApp: App {
                 // `isPresented` from its "Command Palette…" menu item.
                 .environmentObject(appDelegate.commandPalette)
                 .environmentObject(appDelegate.networkTraffic)
+                .environmentObject(appDelegate.networkMonitor)
                 // `HistoryStore` is an `actor`, not an `ObservableObject`,
                 // so it rides the plain environment (see
                 // `EnvironmentValues.historyStore` in `Pages/HistoryPage.swift`)
@@ -64,6 +65,7 @@ struct IDOTaskMasterApp: App {
         Settings {
             SettingsPage()
                 .environmentObject(appDelegate.settings)
+                .environmentObject(appDelegate.updateChecker)
         }
 
         // M8's third task (PLAN.md §4, §3's `MenuBarExtraView.swift`):

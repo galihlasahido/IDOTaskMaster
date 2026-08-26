@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Settings window content — PLAN.md §1.1 "Settings" / §4 M8's "Settings
@@ -167,30 +168,79 @@ private struct GeneralSettingsTab: View {
 
 // MARK: - Updates
 
-/// PLAN.md §1.1's Updates section, scoped to this task's "update check."
-/// Honest about there being no update source configured yet — same
-/// "honest degradation" rule PLAN.md §2 holds every `Provider` to, applied
-/// here to a feature area instead of a hardware sensor. See
-/// `SettingsStore.checkForUpdatesOnLaunch`'s doc comment.
+/// PLAN.md §1.1's Updates section, scoped to this task's "update check" —
+/// now backed by a real source, `Core/UpdateChecker.swift`, which reads
+/// this project's public GitHub Releases feed rather than a Sparkle
+/// appcast. "Download & Install…" downloads the release's `.dmg` and
+/// opens it (the same as double-clicking a Safari download), so the user
+/// lands straight at the familiar drag-the-app-into-Applications window —
+/// see that type's own doc comment for why this app still never installs
+/// anything itself past that point.
 private struct UpdatesSettingsTab: View {
     @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var updateChecker: UpdateChecker
 
     var body: some View {
         Form {
             Toggle("Check for Updates on Launch", isOn: $settings.checkForUpdatesOnLaunch)
 
-            Button("Check for Updates Now") {
-                settings.recordUpdateCheck()
+            HStack {
+                Button(action: runCheck) {
+                    if updateChecker.isChecking {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Check for Updates Now")
+                    }
+                }
+                .disabled(updateChecker.isChecking)
+
+                if case .updateAvailable(_, let releaseURL, let dmgURL) = updateChecker.lastResult {
+                    if let dmgURL {
+                        Button(action: { downloadAndInstall(from: dmgURL) }) {
+                            if updateChecker.downloadState == .downloading {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Text("Download & Install…")
+                            }
+                        }
+                        .disabled(updateChecker.downloadState == .downloading)
+                    }
+
+                    Button("Release Notes…") {
+                        NSWorkspace.shared.open(releaseURL)
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(versionText)
                 Text(statusText)
+                if case .failed(let reason) = updateChecker.downloadState {
+                    Text("Couldn't download the update: \(reason)")
+                }
+                if let lastChecked = settings.lastUpdateCheckDate {
+                    Text("Last checked \(Self.checkedAtFormatter.string(from: lastChecked)).")
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
         }
         .padding(20)
+    }
+
+    private func runCheck() {
+        Task {
+            await updateChecker.check()
+            settings.recordUpdateCheck()
+        }
+    }
+
+    private func downloadAndInstall(from url: URL) {
+        Task {
+            await updateChecker.downloadAndOpenInstaller(from: url)
+        }
     }
 
     private var versionText: String {
@@ -203,9 +253,16 @@ private struct UpdatesSettingsTab: View {
     }
 
     private var statusText: String {
-        let base = "No update source is configured yet — reinstall a new build manually."
-        guard let lastChecked = settings.lastUpdateCheckDate else { return base }
-        return "\(base)\nLast checked \(Self.checkedAtFormatter.string(from: lastChecked))."
+        switch updateChecker.lastResult {
+        case .none:
+            return "Not checked yet."
+        case .upToDate(let current):
+            return "You're up to date (v\(current))."
+        case .updateAvailable(let latest, _, _):
+            return "A new version is available: v\(latest)."
+        case .failed(let reason):
+            return "Couldn't check for updates: \(reason)"
+        }
     }
 
     private static let checkedAtFormatter: DateFormatter = {
@@ -264,4 +321,5 @@ private struct WindowSettingsTab: View {
 #Preview {
     SettingsPage()
         .environmentObject(SettingsStore(defaults: UserDefaults(suiteName: "SettingsPage.preview")!))
+        .environmentObject(UpdateChecker())
 }

@@ -178,12 +178,26 @@ struct NetworkUsagePage: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
+    /// All five tiles in `statTileRow` share the same card height only if
+    /// they share the same *structure* — `StatTile`'s card sizes itself to
+    /// whichever of `secondaryText`/embedded `content` a given call
+    /// actually passes (see that type's own doc comment), so a tile with
+    /// neither, or with only one of the two, renders visibly shorter than
+    /// one with both. Every tile below therefore carries both a real
+    /// `secondaryText` line and a fixed-height `content` view — the rate
+    /// tiles' real `HistoryGraph` sparklines, or a plain `Color.clear`
+    /// spacer at the same height for the count/total tiles that have
+    /// nothing to chart — so the row lines up regardless of which tile
+    /// happens to have a chart.
+    private static let tileFillerHeight: CGFloat = 28
+
     private var sendRateTile: some View {
         StatTile(
             title: "Send Rate",
             systemImage: "arrow.up.circle",
             color: DomainPalette.networkOut,
             value: Fmt.bytesPerSecond(model.snapshot?.totalSendBytesPerSecond),
+            secondaryText: "across all processes",
             isUnavailable: model.snapshot == nil
         ) {
             HistoryGraph(
@@ -192,7 +206,7 @@ struct NetworkUsagePage: View {
                 gridLineCount: 0,
                 accessibilityLabel: "Total send rate history"
             )
-            .frame(height: 28)
+            .frame(height: Self.tileFillerHeight)
         }
     }
 
@@ -202,6 +216,7 @@ struct NetworkUsagePage: View {
             systemImage: "arrow.down.circle",
             color: DomainPalette.networkIn,
             value: Fmt.bytesPerSecond(model.snapshot?.totalReceiveBytesPerSecond),
+            secondaryText: "across all processes",
             isUnavailable: model.snapshot == nil
         ) {
             HistoryGraph(
@@ -210,7 +225,7 @@ struct NetworkUsagePage: View {
                 gridLineCount: 0,
                 accessibilityLabel: "Total receive rate history"
             )
-            .frame(height: 28)
+            .frame(height: Self.tileFillerHeight)
         }
     }
 
@@ -222,7 +237,9 @@ struct NetworkUsagePage: View {
             value: model.snapshot.map { "\($0.readings.count)" } ?? "",
             secondaryText: "with network activity",
             isUnavailable: model.snapshot == nil
-        )
+        ) {
+            Color.clear.frame(height: Self.tileFillerHeight)
+        }
     }
 
     private var totalSentTile: some View {
@@ -233,7 +250,9 @@ struct NetworkUsagePage: View {
             value: model.snapshot.map { Fmt.bytes(Self.combinedBytesSent($0)) } ?? "",
             secondaryText: "since observed",
             isUnavailable: model.snapshot == nil
-        )
+        ) {
+            Color.clear.frame(height: Self.tileFillerHeight)
+        }
     }
 
     private var totalReceivedTile: some View {
@@ -244,7 +263,9 @@ struct NetworkUsagePage: View {
             value: model.snapshot.map { Fmt.bytes(Self.combinedBytesReceived($0)) } ?? "",
             secondaryText: "since observed",
             isUnavailable: model.snapshot == nil
-        )
+        ) {
+            Color.clear.frame(height: Self.tileFillerHeight)
+        }
     }
 
     private static func combinedBytesSent(_ snapshot: NetTrafficSnapshot) -> UInt64 {

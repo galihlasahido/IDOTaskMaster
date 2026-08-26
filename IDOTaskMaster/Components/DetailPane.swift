@@ -19,13 +19,21 @@ struct DetailPaneField: Identifiable {
     /// readings, matching the convention `DataTable` and `CapacityBar`
     /// use for their own numeric cells.
     var isMonospaced: Bool = false
+    /// When set, `value` renders as a clickable link-style button instead
+    /// of plain selectable text — e.g. `NetworkMonitorPage`'s PID field
+    /// jumping straight to that process on the Processes page. `nil` (the
+    /// default) keeps every existing field exactly as plain text; never
+    /// applied when `isUnavailable` is true regardless of whether one is
+    /// set, since there's nothing meaningful to jump to.
+    var action: (() -> Void)?
 
-    init(id: String? = nil, label: String, value: String, isUnavailable: Bool = false, isMonospaced: Bool = false) {
+    init(id: String? = nil, label: String, value: String, isUnavailable: Bool = false, isMonospaced: Bool = false, action: (() -> Void)? = nil) {
         self.id = id ?? label
         self.label = label
         self.value = value
         self.isUnavailable = isUnavailable
         self.isMonospaced = isMonospaced
+        self.action = action
     }
 }
 
@@ -172,6 +180,16 @@ struct DetailPane: View {
 
     @ViewBuilder
     private func fieldValue(_ field: DetailPaneField) -> some View {
+        if let action = field.action, !field.isUnavailable {
+            Button(action: action) { valueText(field) }
+                .buttonStyle(.link)
+        } else {
+            valueText(field)
+        }
+    }
+
+    @ViewBuilder
+    private func valueText(_ field: DetailPaneField) -> some View {
         let text = Text(field.isUnavailable ? "Unavailable" : field.value)
             .font(.callout)
             .foregroundStyle(field.isUnavailable ? Color(nsColor: .tertiaryLabelColor) : .primary)

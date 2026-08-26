@@ -117,6 +117,15 @@ struct AppShell: View {
         .onChange(of: alertsEngine.notificationClickSignal) { _ in
             selection = .alerts
         }
+        // Same "external event sets `selection`" pattern as the two
+        // `onChange`s above, for `CommandPaletteController
+        // .jumpToProcess(pid:)` — reachable from any page, not just the
+        // palette itself (e.g. `NetworkMonitorPage`'s detail pane).
+        .onChange(of: commandPalette.pendingProcessJumpPID) { pid in
+            guard let pid else { return }
+            selection = .processes
+            pendingProcessSelectionPID = pid
+        }
     }
 
     private var navigationTitle: String {
@@ -215,6 +224,7 @@ struct AppShell: View {
         case .powerFreq: PowerFreqPage()
         case .connections: ConnectionsPage()
         case .networkUsage: NetworkUsagePage()
+        case .networkMonitor: NetworkMonitorPage()
         case .installedApps: InstalledAppsPage()
         case .diskSpace: DiskSpacePage()
         case .cleanup: CleanupPage()

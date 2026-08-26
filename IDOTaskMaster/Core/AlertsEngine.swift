@@ -116,8 +116,13 @@ final class AlertsEngine: ObservableObject {
     /// seen on the most recent connections poll. `nil` until the first
     /// poll completes — that first poll only seeds this set, it never
     /// fires (every port already open when the app launched isn't "new");
-    /// see `pollConnectionsForNewPublicPorts`.
+    /// see `evaluateNewPublicListeningPort`.
     private var knownPublicListenKeys: Set<String>?
+    /// Every remote IP this Mac has been seen connecting *out* to, as of
+    /// the most recent connections poll — the outbound counterpart of
+    /// `knownPublicListenKeys`, same "`nil` until first poll, which only
+    /// seeds it" rule; see `evaluateNewOutboundHost`.
+    private var knownOutboundHosts: Set<String>?
 
     /// - Parameter defaults: The `UserDefaults` suite rules are persisted
     ///   to/loaded from. Defaults to `.standard`; tests should pass an
@@ -160,16 +165,20 @@ final class AlertsEngine: ObservableObject {
         connectionsPollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                if self.hasEnabledNewPortRule {
-                    await self.pollConnectionsForNewPublicPorts()
+                if self.hasEnabledConnectionsPollRule {
+                    await self.pollConnections()
                 }
                 try? await Task.sleep(nanoseconds: Self.connectionsPollSeconds * 1_000_000_000)
             }
         }
     }
 
-    private var hasEnabledNewPortRule: Bool {
-        rules.contains { $0.isEnabled && $0.kind == .newPublicListeningPort }
+    /// Whether either connections-poll-backed rule kind has an enabled
+    /// rule — gates the one shared `pollConnections()` call so a session
+    /// with neither enabled never pays for a `ConnectionsProvider.sample()`
+    /// walk it has nothing to do with.
+    private var hasEnabledConnectionsPollRule: Bool {
+        rules.contains { $0.isEnabled && ($0.kind == .newPublicListeningPort || $0.kind == .newOutboundHost) }
     }
 
     // MARK: - Rule editing (AlertsPage's rule editor UI)
@@ -254,8 +263,8 @@ final class AlertsEngine: ObservableObject {
                 evaluateLowDisk(rule: rule, percent: percent, snapshot: snapshot)
             case .lowBatteryPercent(let percent):
                 evaluateLowBattery(rule: rule, percent: percent, snapshot: snapshot)
-            case .newPublicListeningPort:
-                continue // handled by `pollConnectionsForNewPublicPorts` instead
+            case .newPublicListeningPort, .newOutboundHost:
+                continue // handled by `pollConnections` instead
             }
         }
     }
@@ -326,7 +335,28 @@ final class AlertsEngine: ObservableObject {
         fire(rule: rule, message: message, severity: severity, now: snapshot.timestamp)
     }
 
-    // MARK: - New public listening port
+    // MARK: - Connections poll (new public listening port / new outbound host)
+
+    /// One shared `ConnectionsProvider.sample()` call backing both
+    /// connections-based rule kinds, gated by `hasEnabledConnectionsPollRule`
+    /// — a session with only one of the two enabled still pays for just
+    /// one walk of every process's fd table per poll, not two.
+    private func pollConnections() async {
+        do {
+            let catalog = try await connectionsProvider.sample()
+            lastConnectionsPollAt = Date()
+            lastConnectionsPollError = nil
+
+            if rules.contains(where: { $0.isEnabled && $0.kind == .newPublicListeningPort }) {
+                evaluateNewPublicListeningPort(catalog: catalog)
+            }
+            if rules.contains(where: { $0.isEnabled && $0.kind == .newOutboundHost }) {
+                evaluateNewOutboundHost(catalog: catalog)
+            }
+        } catch {
+            lastConnectionsPollError = error.localizedDescription
+        }
+    }
 
     /// Diffs this poll's publicly-exposed listening sockets
     /// (`SocketExposure.internet`) against `knownPublicListenKeys` from
@@ -340,37 +370,76 @@ final class AlertsEngine: ObservableObject {
     /// several ports opening in the same 20-second window doesn't spam
     /// several alerts, and so this rule's own per-rule cooldown (below)
     /// only ever needs to reason about one `fire()` call per poll.
-    private func pollConnectionsForNewPublicPorts() async {
-        do {
-            let catalog = try await connectionsProvider.sample()
-            lastConnectionsPollAt = Date()
-            lastConnectionsPollError = nil
+    private func evaluateNewPublicListeningPort(catalog: ConnectionsCatalog) {
+        let publicListening = catalog.sockets.filter { $0.isListening && $0.exposure == .internet }
+        var currentByKey: [String: ConnectionSocket] = [:]
+        for socket in publicListening {
+            currentByKey[publicPortKey(socket)] = socket
+        }
+        defer { knownPublicListenKeys = Set(currentByKey.keys) }
 
-            let publicListening = catalog.sockets.filter { $0.isListening && $0.exposure == .internet }
-            var currentByKey: [String: ConnectionSocket] = [:]
-            for socket in publicListening {
-                currentByKey[publicPortKey(socket)] = socket
-            }
-            defer { knownPublicListenKeys = Set(currentByKey.keys) }
+        guard let known = knownPublicListenKeys else { return }
+        let newKeys = Set(currentByKey.keys).subtracting(known)
+        guard !newKeys.isEmpty else { return }
 
-            guard let known = knownPublicListenKeys else { return }
-            let newKeys = Set(currentByKey.keys).subtracting(known)
-            guard !newKeys.isEmpty else { return }
-
-            let newSockets = newKeys.compactMap { currentByKey[$0] }
-                .sorted { ($0.localPort ?? 0) < ($1.localPort ?? 0) }
-            let message = newPortMessage(for: newSockets)
-            let now = Date()
-            for rule in rules where rule.isEnabled && rule.kind == .newPublicListeningPort {
-                fire(rule: rule, message: message, severity: .warning, now: now)
-            }
-        } catch {
-            lastConnectionsPollError = error.localizedDescription
+        let newSockets = newKeys.compactMap { currentByKey[$0] }
+            .sorted { ($0.localPort ?? 0) < ($1.localPort ?? 0) }
+        let message = newPortMessage(for: newSockets)
+        let now = Date()
+        for rule in rules where rule.isEnabled && rule.kind == .newPublicListeningPort {
+            fire(rule: rule, message: message, severity: .warning, now: now)
         }
     }
 
     private func publicPortKey(_ socket: ConnectionSocket) -> String {
         "\(socket.transport.rawValue):\(socket.localPort ?? 0)"
+    }
+
+    /// Diffs this poll's outbound remote hosts (any socket with a
+    /// `remoteAddress`, not just internet-exposed/listening ones — this
+    /// rule is about connections *this Mac initiates*, the opposite
+    /// direction from `evaluateNewPublicListeningPort`'s own inbound
+    /// check) against `knownOutboundHosts` from the previous poll. Same
+    /// "first poll only seeds the baseline, never fires" rule as the
+    /// listening-port check. Keyed by remote IP alone (not IP+port+pid):
+    /// the alert is "this Mac has never talked to this host before," not
+    /// "this exact socket is new," which is what a user actually wants
+    /// from a security-awareness rule like this one — must be turned on
+    /// explicitly like every other rule (`AlertsEngine.defaultRules`
+    /// seeds it disabled), since a freshly-enabled rule's first poll is
+    /// establishing a baseline from whatever's already connected, not a
+    /// signal that all of it is suspicious.
+    private func evaluateNewOutboundHost(catalog: ConnectionsCatalog) {
+        var currentByIP: [String: ConnectionSocket] = [:]
+        for socket in catalog.sockets {
+            guard let ip = socket.remoteAddress else { continue }
+            currentByIP[ip] = socket
+        }
+        defer { knownOutboundHosts = Set(currentByIP.keys) }
+
+        guard let known = knownOutboundHosts else { return }
+        let newIPs = Set(currentByIP.keys).subtracting(known)
+        guard !newIPs.isEmpty else { return }
+
+        let newSockets = newIPs.compactMap { currentByIP[$0] }
+            .sorted { ($0.processName ?? "") < ($1.processName ?? "") }
+        let message = newOutboundHostMessage(for: newSockets)
+        let now = Date()
+        for rule in rules where rule.isEnabled && rule.kind == .newOutboundHost {
+            fire(rule: rule, message: message, severity: .warning, now: now)
+        }
+    }
+
+    private func newOutboundHostMessage(for sockets: [ConnectionSocket]) -> String {
+        let descriptions = sockets.map { socket -> String in
+            let processText = socket.processName ?? "pid \(socket.pid)"
+            let hostText = socket.remoteAddress ?? "?"
+            return "\(processText) \u{2192} \(hostText)"
+        }
+        if descriptions.count == 1 {
+            return "New outbound connection: \(descriptions[0])."
+        }
+        return "\(descriptions.count) new outbound connections: \(descriptions.joined(separator: ", "))."
     }
 
     private func newPortMessage(for sockets: [ConnectionSocket]) -> String {
@@ -491,6 +560,7 @@ final class AlertsEngine: ObservableObject {
         AlertRule(name: "Low Disk Space", kind: .lowDiskFreePercent(percent: 10), isEnabled: false),
         AlertRule(name: "Low Battery", kind: .lowBatteryPercent(percent: 20), isEnabled: false),
         AlertRule(name: "New Public Listening Port", kind: .newPublicListeningPort, isEnabled: false),
+        AlertRule(name: "New Outbound Host", kind: .newOutboundHost, isEnabled: false),
     ]
 }
 
@@ -558,6 +628,10 @@ enum AlertRuleKind: Equatable, Codable {
     /// `SocketExposure.internet` (reachable from outside the LAN) that
     /// wasn't already listening on the previous connections poll.
     case newPublicListeningPort
+    /// Fires once a process connects out to a remote host this Mac hasn't
+    /// been seen talking to on any previous connections poll since this
+    /// rule was last enabled.
+    case newOutboundHost
 }
 
 /// Codable stand-in for `MemoryPressureLevel` restricted to the two
@@ -623,6 +697,7 @@ enum AlertRuleKindTag: String, CaseIterable, Identifiable, Codable {
     case lowDisk
     case lowBattery
     case newPublicPort
+    case newOutboundHost
 
     var id: String { rawValue }
 
@@ -633,6 +708,7 @@ enum AlertRuleKindTag: String, CaseIterable, Identifiable, Codable {
         case .lowDisk: return "Low Disk Space"
         case .lowBattery: return "Low Battery"
         case .newPublicPort: return "New Public Listening Port"
+        case .newOutboundHost: return "New Outbound Host"
         }
     }
 
@@ -643,6 +719,7 @@ enum AlertRuleKindTag: String, CaseIterable, Identifiable, Codable {
         case .lowDisk: return "internaldrive"
         case .lowBattery: return "battery.25"
         case .newPublicPort: return "network"
+        case .newOutboundHost: return "globe"
         }
     }
 }
@@ -655,6 +732,7 @@ extension AlertRuleKind {
         case .lowDiskFreePercent: return .lowDisk
         case .lowBatteryPercent: return .lowBattery
         case .newPublicListeningPort: return .newPublicPort
+        case .newOutboundHost: return .newOutboundHost
         }
     }
 
@@ -672,6 +750,8 @@ extension AlertRuleKind {
             return "Battery drops to \(formatPercent(percent)) or below while unplugged"
         case .newPublicListeningPort:
             return "A process starts listening on a new public port"
+        case .newOutboundHost:
+            return "A process connects to a host it hasn\u{2019}t talked to before"
         }
     }
 }

@@ -533,6 +533,10 @@ private struct AlertRuleEditorView: View {
             Text("Fires whenever a process starts listening on a port reachable from outside your local network.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+        case .newOutboundHost:
+            Text("Fires whenever a process connects out to a host this Mac hasn\u{2019}t talked to before. Enabling this establishes a baseline from whatever's already connected \u{2014} it won't fire for those, only for hosts seen for the first time afterward.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -568,6 +572,7 @@ private struct AlertRuleEditorView: View {
         case .lowDisk: kind = .lowDiskFreePercent(percent: diskPercent)
         case .lowBattery: kind = .lowBatteryPercent(percent: batteryPercent)
         case .newPublicPort: kind = .newPublicListeningPort
+        case .newOutboundHost: kind = .newOutboundHost
         }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedCommand = commandToRun.trimmingCharacters(in: .whitespacesAndNewlines)

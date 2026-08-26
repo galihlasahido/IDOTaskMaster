@@ -17,12 +17,26 @@ import SwiftUI
 @MainActor
 final class CommandPaletteController: ObservableObject {
     @Published var isPresented = false
+    /// Set by any page wanting to jump straight to one process on the
+    /// Processes page — e.g. `NetworkMonitorPage`'s detail pane, clicking
+    /// a PID — not just the palette itself. `AppShell` observes this via
+    /// `onChange` the same way it reacts to a palette pick, switching
+    /// `selection` to `.processes` and handing the pid down through
+    /// `ProcessesPage`'s own `pendingSelectionPID` binding.
+    @Published private(set) var pendingProcessJumpPID: pid_t?
 
     /// Opens the palette. Safe to call when it's already open — the menu
     /// item's ⌘K firing twice (or a future second trigger) just
     /// idempotently sets the same `true`.
     func present() {
         isPresented = true
+    }
+
+    /// Requests a jump to `pid` on the Processes page, from anywhere in
+    /// the app — the same destination `CommandPaletteView`'s own process
+    /// rows activate, just reachable without opening the palette first.
+    func jumpToProcess(pid: pid_t) {
+        pendingProcessJumpPID = pid
     }
 }
 

@@ -67,6 +67,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// comment for why it waits for the user's explicit "Start
     /// Collecting" instead.
     let networkTraffic = NetworkTrafficMonitor()
+    /// Which apps have talked to which remote hosts (`NetworkMonitorPage`).
+    /// Owned here, alongside `networkTraffic`, for the exact same reason:
+    /// once the user turns on its "Watch" button, both the polling and
+    /// everything it's accumulated must survive navigating away from that
+    /// page and back — not auto-started here, same "waits for explicit
+    /// opt-in" rule. See that type's own doc comment.
+    let networkMonitor = NetworkMonitorViewModel()
+    /// Backs Settings ▸ Updates' "Check for Updates Now" button and "Check
+    /// for Updates on Launch" toggle (`Core/UpdateChecker.swift`). Owned
+    /// here, alongside `networkMonitor`, so a launch-time check has
+    /// already populated its result by the time the user opens Settings —
+    /// unlike that type, this one *is* auto-started below, gated on the
+    /// user's own `checkForUpdatesOnLaunch` preference rather than an
+    /// always-on-by-default sampler, so it doesn't need the "waits for
+    /// explicit opt-in" treatment those other two document.
+    let updateChecker = UpdateChecker()
 
     private var shortcut: GlobalShortcutManager?
     private var cancellables = Set<AnyCancellable>()
@@ -113,6 +129,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // `networkTraffic` is deliberately NOT started here — see its own
         // doc comment. It only starts once the user clicks "Start
         // Collecting" on `NetworkUsagePage`.
+
+        // Unlike `networkTraffic`/`networkMonitor` above, this one *is*
+        // triggered from launch — but only when the user's own
+        // "Check for Updates on Launch" preference is on (defaults to
+        // true), so it's still gated on an explicit, visible setting
+        // rather than being an unconditional hidden network request.
+        if settings.checkForUpdatesOnLaunch {
+            Task {
+                await updateChecker.check()
+                settings.recordUpdateCheck()
+            }
+        }
 
         settings.$globalShortcutEnabled
             .dropFirst() // current value already applied just above

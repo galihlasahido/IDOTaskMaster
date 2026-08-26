@@ -161,14 +161,29 @@ struct ConnectionsPage: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
+    /// All five tiles in `statTileRow` share the same card height only if
+    /// they share the same *structure* — `StatTile`'s card sizes itself to
+    /// whichever of `secondaryText`/embedded `content` a given call
+    /// actually passes (see that type's own doc comment), so a tile with
+    /// neither renders visibly shorter than one with a caption line or a
+    /// sparkline. Every tile below therefore carries both a real
+    /// `secondaryText` line and a fixed-height `content` view — a plain
+    /// `Color.clear` spacer standing in for `trafficTile`'s real
+    /// `HistoryGraph` at the same height — so the row lines up regardless
+    /// of which tile happens to have a chart.
+    private static let tileFillerHeight: CGFloat = 28
+
     private var openSocketsTile: some View {
         StatTile(
             title: "Open Sockets",
             systemImage: "app.connected.to.app.below.fill",
             color: DomainPalette.networkIn,
             value: model.catalog.map { "\($0.sockets.count)" } ?? "",
+            secondaryText: "across all processes",
             isUnavailable: model.catalog == nil
-        )
+        ) {
+            Color.clear.frame(height: Self.tileFillerHeight)
+        }
     }
 
     private var listeningPortsTile: some View {
@@ -177,8 +192,11 @@ struct ConnectionsPage: View {
             systemImage: "antenna.radiowaves.left.and.right",
             color: DomainPalette.networkIn,
             value: model.catalog.map { "\(listeningPortCount($0))" } ?? "",
+            secondaryText: "bound for incoming traffic",
             isUnavailable: model.catalog == nil
-        )
+        ) {
+            Color.clear.frame(height: Self.tileFillerHeight)
+        }
     }
 
     /// Distinct (transport, port) pairs among listening/bound sockets —
@@ -199,8 +217,11 @@ struct ConnectionsPage: View {
             systemImage: "globe",
             color: DomainPalette.networkOut,
             value: model.catalog.map { "\($0.sockets.filter { $0.exposure == .internet }.count)" } ?? "",
+            secondaryText: "reachable from the internet",
             isUnavailable: model.catalog == nil
-        )
+        ) {
+            Color.clear.frame(height: Self.tileFillerHeight)
+        }
     }
 
     private var processesTile: some View {
@@ -211,7 +232,9 @@ struct ConnectionsPage: View {
             value: model.catalog.map { "\(processesWithSockets($0))" } ?? "",
             secondaryText: "with open sockets",
             isUnavailable: model.catalog == nil
-        )
+        ) {
+            Color.clear.frame(height: Self.tileFillerHeight)
+        }
     }
 
     private var trafficTile: some View {
@@ -221,6 +244,7 @@ struct ConnectionsPage: View {
             systemImage: "network",
             color: DomainPalette.networkIn,
             value: Fmt.bytesPerSecond(latest),
+            secondaryText: "across all processes",
             isUnavailable: model.trafficHistory.isEmpty
         ) {
             HistoryGraph(
