@@ -121,10 +121,17 @@ enum BenchmarkRunEvent: Sendable {
 }
 
 /// Inputs a run may need beyond "which kind" — PLAN.md's "Disk (read/write,
-/// choose test folder)" is the only one today. Every other kind's runner
-/// ignores this.
+/// choose test folder)" plus, in the same spirit, letting `.internetSpeed`
+/// be pinned to one specific network interface rather than whichever one
+/// macOS's routing table would otherwise pick (useful on a Mac connected
+/// over both Wi-Fi and Ethernet at once). Every other kind's runner
+/// ignores whichever of these two isn't its own.
 struct BenchmarkRunContext: Sendable, Equatable {
     var diskTestFolderPath: String
+    /// `InternetBenchmarkRunner`'s target interface, by BSD name (e.g.
+    /// `"en0"`) — `nil` (the default) keeps its existing, well-tested
+    /// `URLSession.shared` codepath, which lets the OS pick.
+    var networkInterfaceName: String? = nil
 }
 
 /// One benchmark kind's test engine. PLAN.md §3 lists one file per domain

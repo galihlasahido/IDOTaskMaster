@@ -38,6 +38,12 @@ import SwiftUI
 struct BenchmarksPage: View {
     @StateObject private var model = BenchmarksViewModel()
     @State private var diskTestFolderPath = FileManager.default.homeDirectoryForCurrentUser.path
+    /// `.internetSpeed`'s target interface, by BSD name — `nil` (the
+    /// default) leaves it up to macOS's routing table, matching this
+    /// runner's behavior before this picker existed. See
+    /// `InternetBenchmarkRunner`'s own doc comment for why pinning one
+    /// needs a different code path under the hood than the default case.
+    @State private var networkInterfaceName: String?
     @State private var historySort: DataTableSort? = DataTableSort(columnID: "date", ascending: false)
     @State private var selectedHistoryID: UUID?
 
@@ -76,6 +82,7 @@ struct BenchmarksPage: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) { chooseFolderButton }
+            ToolbarItem(placement: .primaryAction) { chooseNetworkInterfaceButton }
             ToolbarItem(placement: .primaryAction) {
                 ExportMenu(columns: Self.historyColumns, rows: model.history, suggestedName: "Benchmark History")
             }
@@ -134,14 +141,58 @@ struct BenchmarksPage: View {
 
     // MARK: - Toolbar
 
+    /// A plain "Choose Folder…" button gives no way to tell at a glance
+    /// which of a Mac's several mounted disks (internal SSD, an external
+    /// drive, a Thunderbolt dock's volume, ...) a given folder happens to
+    /// live on — the underlying reason a "why does the Disk benchmark only
+    /// ever seem to test one disk" question comes up even though
+    /// `DiskBenchmarkRunner` has always run against whatever folder is
+    /// chosen. This menu lists the real detected volumes by name (the same
+    /// `DiskProvider.readVolumeCapacities()` list `PerformancePage`'s own
+    /// Disks detail shows) so picking a specific physical disk is a single
+    /// click, while "Choose Other Folder…" keeps the previous raw
+    /// `NSOpenPanel` escape hatch for testing a specific subfolder or a
+    /// mount this list doesn't happen to include.
     private var chooseFolderButton: some View {
-        Button {
-            chooseDiskTestFolder()
+        Menu {
+            ForEach(DiskProvider.readVolumeCapacities()) { volume in
+                Toggle(isOn: diskTestFolderBinding(for: volume.id)) {
+                    Text(volumeMenuTitle(volume))
+                }
+            }
+            Divider()
+            Button("Choose Other Folder\u{2026}") {
+                chooseDiskTestFolder()
+            }
         } label: {
-            Label("Choose Disk Test Folder\u{2026}", systemImage: "folder")
+            Label("Disk: \u{201C}\((diskTestFolderPath as NSString).lastPathComponent)\u{201D}", systemImage: "internaldrive")
         }
         .disabled(model.isRunning)
-        .help("Choose the folder the Disk benchmark reads and writes its test file in \u{2014} currently \u{201C}\((diskTestFolderPath as NSString).lastPathComponent)\u{201D}")
+        .help("Choose which disk (or folder) the Disk benchmark reads and writes its test file on \u{2014} currently \u{201C}\((diskTestFolderPath as NSString).lastPathComponent)\u{201D}")
+    }
+
+    private func volumeMenuTitle(_ volume: DiskCapacity) -> String {
+        let name = volume.volumeName ?? volume.id
+        guard let totalBytes = volume.totalBytes else { return name }
+        return "\(name) (\(Fmt.bytes(totalBytes)))"
+    }
+
+    /// A checkmarked, mutually-exclusive `Toggle` per menu item — the same
+    /// "reads as `isOn`, writes through on `true`, no-op on `false`" shape
+    /// `AppCommands`' own `binding(for:)`/`dockIconBinding(for:)` already
+    /// establish for the View menu's Update Frequency/Dock Icon rows.
+    /// `Button` + a hand-swapped `Label(_, systemImage: "checkmark")` per
+    /// item — this menu's first cut — silently doesn't reappear as checked
+    /// the next time the menu opens; `Toggle` is what actually gets a
+    /// native checkmark from AppKit's own `Menu`-to-`NSMenu` bridging.
+    private func diskTestFolderBinding(for path: String) -> Binding<Bool> {
+        Binding(
+            get: { diskTestFolderPath == path },
+            set: { isOn in
+                guard isOn else { return }
+                diskTestFolderPath = path
+            }
+        )
     }
 
     private func chooseDiskTestFolder() {
@@ -153,6 +204,53 @@ struct BenchmarksPage: View {
         panel.directoryURL = URL(fileURLWithPath: diskTestFolderPath, isDirectory: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         diskTestFolderPath = url.path
+    }
+
+    /// Same reasoning as `chooseFolderButton`, one domain over: a Mac
+    /// connected over Wi-Fi *and* Ethernet at once otherwise has no way to
+    /// say which one the Internet benchmark should actually measure — it
+    /// would just silently follow whichever route macOS's routing table
+    /// currently prefers. "System Default" keeps that original behavior
+    /// exactly (`networkInterfaceName = nil`); every other entry is a real
+    /// interface `InternetBenchmarkRunner.availableInterfaces()` found
+    /// currently joined to a network (an unplugged dongle isn't offered —
+    /// picking it would only produce a confusing connection failure).
+    private var chooseNetworkInterfaceButton: some View {
+        let interfaces = InternetBenchmarkRunner.availableInterfaces()
+        return Menu {
+            Toggle(isOn: networkInterfaceBinding(for: nil)) {
+                Text("System Default")
+            }
+            if !interfaces.isEmpty {
+                Divider()
+                ForEach(interfaces) { interface in
+                    Toggle(isOn: networkInterfaceBinding(for: interface.id)) {
+                        Text(interface.displayName)
+                    }
+                }
+            }
+        } label: {
+            Label("Network: \u{201C}\(networkInterfaceMenuTitle(interfaces))\u{201D}", systemImage: "network")
+        }
+        .disabled(model.isRunning)
+        .help("Choose which network interface the Internet benchmark measures \u{2014} currently \u{201C}\(networkInterfaceMenuTitle(interfaces))\u{201D}")
+    }
+
+    private func networkInterfaceMenuTitle(_ interfaces: [InternetBenchmarkRunner.NetworkInterfaceOption]) -> String {
+        guard let networkInterfaceName else { return "System Default" }
+        return interfaces.first { $0.id == networkInterfaceName }?.displayName ?? networkInterfaceName
+    }
+
+    /// See `diskTestFolderBinding(for:)`'s doc comment — same shape, over
+    /// `networkInterfaceName` (`nil` for "System Default").
+    private func networkInterfaceBinding(for name: String?) -> Binding<Bool> {
+        Binding(
+            get: { networkInterfaceName == name },
+            set: { isOn in
+                guard isOn else { return }
+                networkInterfaceName = name
+            }
+        )
     }
 
     // MARK: - Cards
@@ -205,7 +303,7 @@ struct BenchmarksPage: View {
                     isRunning: model.runningKind == kind,
                     runDisabled: model.isRunning,
                     runAction: {
-                        model.start(kind, context: BenchmarkRunContext(diskTestFolderPath: diskTestFolderPath))
+                        model.start(kind, context: BenchmarkRunContext(diskTestFolderPath: diskTestFolderPath, networkInterfaceName: networkInterfaceName))
                     },
                     cancelAction: { model.cancelActiveRun() }
                 )
@@ -301,7 +399,7 @@ struct BenchmarksPage: View {
                     // at all).
                     runAllDisabled: model.isRunning && !model.isRunningAll,
                     runAllAction: {
-                        model.runAll(context: BenchmarkRunContext(diskTestFolderPath: diskTestFolderPath))
+                        model.runAll(context: BenchmarkRunContext(diskTestFolderPath: diskTestFolderPath, networkInterfaceName: networkInterfaceName))
                     },
                     cancelAllAction: { model.cancelRunAll() }
                 )
@@ -677,6 +775,22 @@ private enum Fmt {
         guard value.isFinite else { return "\u{2014}" }
         return numberFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
     }
+
+    /// The disk-target menu's "(2 TB)" capacity suffix — same
+    /// `ByteCountFormatter` configuration `DiskSpacePage`'s own `Fmt.bytes`
+    /// uses, kept as a separate copy since this page's `Fmt` is already
+    /// its own private, non-shared enum (matching every other page here).
+    static func bytes(_ value: UInt64) -> String {
+        let clamped = min(value, UInt64(Int64.max))
+        return bytesFormatter.string(fromByteCount: Int64(clamped))
+    }
+
+    private static let bytesFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowsNonnumericFormatting = false
+        return formatter
+    }()
 
     /// One-line summary of every metric in a result, e.g. "Score 12,480" or
     /// "Read 512.0 MB/s \u{00B7} Write 480.2 MB/s" — the history table's

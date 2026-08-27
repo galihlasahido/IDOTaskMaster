@@ -427,7 +427,14 @@ final class DiskProvider: Provider {
     /// simply omitted rather than failing the whole domain, since capacity
     /// is a secondary reading alongside the driver-backed activity/rate
     /// fields this provider's `sample()` already computed by this point.
-    private static func readVolumeCapacities() -> [DiskCapacity] {
+    ///
+    /// Not `private`: `BenchmarksPage`'s disk-target picker calls this
+    /// directly for the same real, already-filtered volume list — a
+    /// second `FileManager.mountedVolumeURLs` call of its own would just
+    /// duplicate this exact filtering, and a full `sample()` would also
+    /// pay for the IOKit block-storage enumeration this picker doesn't
+    /// need.
+    static func readVolumeCapacities() -> [DiskCapacity] {
         let keys: Set<URLResourceKey> = [
             .volumeNameKey,
             .volumeTotalCapacityKey,
