@@ -35,11 +35,22 @@ no IPC. Providers that can't read a metric say **"Unavailable"** instead of gues
 - **Power & Freq** — an HWiNFO-style live sensor tree (Value/Min/Max) for CPU/GPU/SSD.
 - **Connections** — per-process socket table with exposure classification
   (loopback/LAN/Internet) and filter chips.
+- **Network Monitor** — a persistent outbound-connection log: which apps talked to which
+  hosts and when, with app icons, opt-in per-host country lookup, and a New Outbound Host
+  alert rule.
+- **USB & Ports** — every physical USB-C/MagSafe port with live volts/amps/watts, the
+  attached cable's e-marker identity, the negotiated link speed with a
+  cable-vs-device diagnosis, port health (liquid detection, fault counters), the USB
+  device tree, and an explicit cable-health test that catches marginal cables a link
+  rate can't show.
 - **Installed Apps** — `/Applications` scan with sizes, related-files finder, and Uninstall.
 - **Disk Space** — async scanner, bubble visualization, file-type legend, largest
   folders/files.
-- **Benchmarks** — CPU (single/multi-core), GPU compute, Disk R/W, Internet down/up, plus
-  an aggregate Score page with run history.
+- **Clean Up** — clear app caches, logs, and developer-tool build output, with everything
+  routed through the Trash.
+- **Benchmarks** — CPU (single/multi-core), GPU compute, Disk R/W (with a target-disk
+  picker), Internet down/up (with a network-interface picker), plus an aggregate Score
+  page with run history.
 
 **Extras**
 - Menu bar extra with a live compact readout and popover mini-dashboard (keeps collecting
@@ -63,6 +74,10 @@ no IPC. Providers that can't read a metric say **"Unavailable"** instead of gues
 | System Info | Benchmarks |
 |---|---|
 | ![System Info](docs/screenshots/systeminfo.png) | ![Benchmarks](docs/screenshots/benchmarks.png) |
+
+| Network Monitor | USB & Ports |
+|---|---|
+| ![Network Monitor](docs/screenshots/networkmonitoring.png) | ![USB & Ports](docs/screenshots/usbports.png) |
 
 ## Requirements
 
