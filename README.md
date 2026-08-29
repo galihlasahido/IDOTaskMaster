@@ -220,6 +220,9 @@ and maintained:
 Not able to contribute? Starring the repo, filing an issue, or just telling another
 Mac user about it helps just as much. Thank you either way. 🙏
 
+Questions, feedback, or anything else — reach me at
+[galih.lasahido@gmail.com](mailto:galih.lasahido@gmail.com).
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
