@@ -452,13 +452,23 @@ private struct CableHealthSheet: View {
             // housekeeping on power-up) — a 4\u{00D7} swing was reproduced
             // on real hardware with nothing else changed. Advice, not
             // enforcement: the run itself stays available immediately.
+            // Tinted like a warning banner (vs the plain secondary text
+            // above) so it's the one thing people actually read before
+            // hitting Run — skipping it is the #1 way to get a misleading
+            // result.
             Label(
                 "Just plugged the drive in? Wait a minute or two first, run the test twice, and trust the second run \u{2014} a freshly-connected SSD measures well below its real speed while the system and the drive finish their post-connect housekeeping.",
-                systemImage: "clock"
+                systemImage: "clock.badge.exclamationmark"
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color(nsColor: .systemOrange))
             .fixedSize(horizontal: false, vertical: true)
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(nsColor: .systemOrange).opacity(0.12))
+            )
 
             Picker("Volume", selection: $selectedVolumePath) {
                 ForEach(volumes) { volume in
