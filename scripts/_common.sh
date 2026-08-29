@@ -11,7 +11,7 @@ SCHEME="IDOTaskMaster"
 APP_NAME="IDOTaskMaster"
 BUNDLE_ID="com.idotaskmaster.mac"
 # Keep this in sync with project.yml's MARKETING_VERSION.
-MARKETING_VERSION="0.5.0"
+MARKETING_VERSION="0.6.0"
 
 # Project-local build output (gitignored) rather than Xcode's global
 # DerivedData — keeps the .app at a path every script can predict.
