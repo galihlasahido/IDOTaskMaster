@@ -71,6 +71,7 @@
 		6F6EFC2BAC3B3A026D1340FF /* InstalledAppsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62236EEAEABB13D1B24AC500 /* InstalledAppsProvider.swift */; };
 		7212DF4A0613EB5961FC8033 /* CleanupProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C1EAEBBAC6641E396237E40 /* CleanupProvider.swift */; };
 		722F15833DC8E20A1A828251 /* GPUBenchmarkRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8D9FFD9E3F6900D7E4822AD /* GPUBenchmarkRunner.swift */; };
+		7305035DD511CAAA77CB8EFC /* USBPortsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831E3B1E9AFAA0F05808A50E /* USBPortsProvider.swift */; };
 		732643822F4548E2B984E47E /* SystemInfoProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF33B9AF8F59180C659DCD9A /* SystemInfoProvider.swift */; };
 		77321F027D05BEA446827193 /* AlertsHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD732AC7B5A8CBFF0A77E65 /* AlertsHandlers.swift */; };
 		778B579F7A37DB54D0BF1838 /* InstalledAppsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62236EEAEABB13D1B24AC500 /* InstalledAppsProvider.swift */; };
@@ -113,6 +114,7 @@
 		CDEF551491E977B8E4775707 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 442C2C82205B40F42175416D /* HistoryStore.swift */; };
 		D026A1E495B31BD6AC68437E /* NetworkTrafficMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DEBB24731AF55165BD8E1E9 /* NetworkTrafficMonitor.swift */; };
 		D0DE6916643BE1737C6AF53E /* NetTrafficProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D085EA0604FC3E1AE981E13 /* NetTrafficProvider.swift */; };
+		D25310F38B497B5B90004BAA /* USBPortsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC72479093C65090EA9683FA /* USBPortsPage.swift */; };
 		D3830A2A8328EDD14BD4C104 /* FileEntryStat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39C7887C4837CE045B4034F0 /* FileEntryStat.swift */; };
 		D49AAB97E8C22DC2126941D0 /* ServicesPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660A70909CA6096C1BACB8C6 /* ServicesPage.swift */; };
 		D66D28FBD4D177CEC4CCE1AB /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436E9ADA2EAA787DEC37C0E7 /* SettingsStore.swift */; };
@@ -133,6 +135,7 @@
 		F1CC931379C79593987B8F20 /* Sampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B14BE14AD8E13ED021DF232 /* Sampler.swift */; };
 		F1E41B5EC8EDBF14DCCEEB63 /* BenchmarksPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0FD592ECCE99670D21B388 /* BenchmarksPage.swift */; };
 		F5AAD465BCC57B7771D25255 /* ProcessProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E504A60690DE13EC1668B422 /* ProcessProvider.swift */; };
+		F7BBEBCD47A1434B0355273D /* USBPortsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831E3B1E9AFAA0F05808A50E /* USBPortsProvider.swift */; };
 		F8F88264B925B5B8236DD8A9 /* NetworkProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F3E4CDB91772DAE53EDEB2D /* NetworkProvider.swift */; };
 		FEE8B8CA072BDF7756DF4DAC /* DiskSpaceScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83BD582E34CDAEE68CD7D215 /* DiskSpaceScanner.swift */; };
 /* End PBXBuildFile section */
@@ -187,6 +190,7 @@
 		746562798D0DC169DD59F7BC /* PlaceholderPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderPageView.swift; sourceTree = "<group>"; };
 		767A492193B14936BA979B6C /* ServicesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesProvider.swift; sourceTree = "<group>"; };
 		7A7FED98E546C23A80B39657 /* StatusPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPalette.swift; sourceTree = "<group>"; };
+		831E3B1E9AFAA0F05808A50E /* USBPortsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBPortsProvider.swift; sourceTree = "<group>"; };
 		83BD582E34CDAEE68CD7D215 /* DiskSpaceScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskSpaceScanner.swift; sourceTree = "<group>"; };
 		84B586AE18AA160849847D4D /* ConnectionsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionsProvider.swift; sourceTree = "<group>"; };
 		84BDB68192BB785F6DBAF229 /* SummaryHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryHandler.swift; sourceTree = "<group>"; };
@@ -206,6 +210,7 @@
 		A88C8A6D7BE78B68EF7DC8D0 /* StatTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatTile.swift; sourceTree = "<group>"; };
 		AAF0D4EF1B290CCB21D94E4D /* WindowAccessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowAccessor.swift; sourceTree = "<group>"; };
 		AC30827CAC0DC61D02A533D8 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		AC72479093C65090EA9683FA /* USBPortsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBPortsPage.swift; sourceTree = "<group>"; };
 		B177E903CBC3682B84C0D8D3 /* NetworkMonitorPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorPage.swift; sourceTree = "<group>"; };
 		B80F182C30E1C87751B8F640 /* ProviderProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderProtocol.swift; sourceTree = "<group>"; };
 		B8D9FFD9E3F6900D7E4822AD /* GPUBenchmarkRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPUBenchmarkRunner.swift; sourceTree = "<group>"; };
@@ -360,6 +365,7 @@
 				0A196495F99DFA500D1C749E /* StartupPage.swift */,
 				A45DCCC8111EA0D3E2BBB999 /* SummaryPage.swift */,
 				3E6EBE4981E7EBF1CE2A327E /* SystemInfoPage.swift */,
+				AC72479093C65090EA9683FA /* USBPortsPage.swift */,
 				159AA41FE16437778BEE07FF /* UsersPage.swift */,
 			);
 			path = Pages;
@@ -411,6 +417,7 @@
 				EF33B9AF8F59180C659DCD9A /* SystemInfoProvider.swift */,
 				51599970816C008807A4BB86 /* ThermalProvider.swift */,
 				26F3DC34850C6238684F32CF /* TopProcessesProvider.swift */,
+				831E3B1E9AFAA0F05808A50E /* USBPortsProvider.swift */,
 			);
 			path = Providers;
 			sourceTree = "<group>";
@@ -621,6 +628,8 @@
 				5BBC8A0F61086D438019EE5C /* SystemInfoProvider.swift in Sources */,
 				E604A70CCAB3A7A4A133484B /* ThermalProvider.swift in Sources */,
 				647BACA50770AA952AD1912C /* TopProcessesProvider.swift in Sources */,
+				D25310F38B497B5B90004BAA /* USBPortsPage.swift in Sources */,
+				F7BBEBCD47A1434B0355273D /* USBPortsProvider.swift in Sources */,
 				AED0C7D0F99A134D7CEADB20 /* UpdateChecker.swift in Sources */,
 				BBA90E4E11D628F14C666A5A /* UserOutlineView.swift in Sources */,
 				08460D63BF086E0DAC01B926 /* UsersPage.swift in Sources */,
@@ -673,6 +682,7 @@
 				87E84CD12DD4121B78AF2149 /* ToolDefinitions.swift in Sources */,
 				A73F3E3BB2D5199753B615C4 /* ToolDispatcher.swift in Sources */,
 				44DC5BE755D3C6383FAC6E5A /* TopProcessesProvider.swift in Sources */,
+				7305035DD511CAAA77CB8EFC /* USBPortsProvider.swift in Sources */,
 				961F135C5EA808C1771D2579 /* UpdateChecker.swift in Sources */,
 				90486304044DE388DE4A66EC /* main.swift in Sources */,
 			);

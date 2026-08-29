@@ -352,17 +352,29 @@ final class InternetBenchmarkRunner: BenchmarkRunner {
     /// the picker and pressing Run) — `performRun` reports that honestly
     /// rather than silently falling back to a different interface than the
     /// one the user chose.
+    /// Single-resume guard for the handler below — a class rather than a
+    /// captured `var` + `NSLock` pair so the closure only captures one
+    /// `Sendable`-safe reference (a captured mutable local is a Swift 6
+    /// concurrency error).
+    private final class ResumeOnceFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var didResume = false
+        /// Returns `true` exactly once.
+        func claim() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if didResume { return false }
+            didResume = true
+            return true
+        }
+    }
+
     private static func resolveNWInterface(named name: String) async -> NWInterface? {
         await withCheckedContinuation { continuation in
             let monitor = NWPathMonitor()
-            let lock = NSLock()
-            var didResume = false
+            let resumeFlag = ResumeOnceFlag()
             monitor.pathUpdateHandler = { path in
-                lock.lock()
-                let alreadyResumed = didResume
-                didResume = true
-                lock.unlock()
-                guard !alreadyResumed else { return }
+                guard resumeFlag.claim() else { return }
                 let match = path.availableInterfaces.first { $0.name == name }
                 monitor.cancel()
                 continuation.resume(returning: match)

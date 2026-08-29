@@ -29,6 +29,7 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
     case connections
     case networkUsage
     case networkMonitor
+    case usbPorts
     case installedApps
     case diskSpace
     case cleanup
@@ -52,6 +53,7 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
         case .connections: "Connections"
         case .networkUsage: "Network Usage"
         case .networkMonitor: "Network Monitor"
+        case .usbPorts: "USB & Ports"
         case .installedApps: "Installed Apps"
         case .diskSpace: "Disk Space"
         case .cleanup: "Clean Up"
@@ -78,6 +80,7 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
         case .connections: "network"
         case .networkUsage: "arrow.up.arrow.down.circle"
         case .networkMonitor: "globe"
+        case .usbPorts: "cable.connector"
         case .installedApps: "square.grid.2x2"
         case .diskSpace: "internaldrive"
         case .cleanup: "trash.circle"
@@ -106,7 +109,7 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
         // consumer of this property) is itself unused now that every page
         // has real content, so these cases only exist to keep the switch
         // exhaustive.
-        case .cleanup, .networkMonitor: "post-1.0"
+        case .cleanup, .networkMonitor, .usbPorts: "post-1.0"
         }
     }
 
@@ -120,7 +123,7 @@ enum SidebarPage: String, CaseIterable, Identifiable, Hashable {
     /// group (History, Alerts, Network Usage, Network Monitor, Clean Up).
     var isToolsSection: Bool {
         switch self {
-        case .powerFreq, .connections, .networkUsage, .networkMonitor, .installedApps, .diskSpace, .cleanup, .benchmarks, .history, .alerts:
+        case .powerFreq, .connections, .networkUsage, .networkMonitor, .usbPorts, .installedApps, .diskSpace, .cleanup, .benchmarks, .history, .alerts:
             true
         case .summary, .performance, .processes, .systemInfo, .startup, .users, .services:
             false
