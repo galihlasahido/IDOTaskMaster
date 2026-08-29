@@ -257,6 +257,16 @@ struct USBPortsPage: View {
             if let diagnosis = linkDiagnosis(cable: cable, link: port.negotiatedLink) {
                 cableFields.append(DetailPaneField(label: "Diagnosis", value: diagnosis))
             }
+            // Trust signal — see `USBCableInfo.claimLooksImplausible` for
+            // the (deliberately narrow) criteria and the empirical case
+            // behind it. Hedged wording on purpose: a flag means "treat
+            // this rating skeptically," never "this cable is fake."
+            if cable.claimLooksImplausible {
+                cableFields.append(DetailPaneField(
+                    label: "Warning",
+                    value: "\u{26A0}\u{FE0F} Claims 80 Gbps passive from an unregistered vendor \u{2014} treat this rating skeptically"
+                ))
+            }
             sections.append(DetailPaneSection(title: "Cable (e-marker)", fields: cableFields))
         } else if port.isConnected {
             // Not `isUnavailable` (which would render the literal

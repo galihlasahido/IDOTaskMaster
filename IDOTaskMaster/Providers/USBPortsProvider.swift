@@ -98,6 +98,26 @@ struct USBCableInfo: Sendable, Equatable {
     /// 6..5): 3 A (up to 60 W) or 5 A (up to 240 W with EPR). Same `nil`
     /// rule as `maxSpeedLabel`.
     let currentRatingLabel: String?
+
+    /// `true` when the e-marker's claims fit a profile that, in practice,
+    /// signals sloppy or dishonest chip programming: a *passive* cable
+    /// claiming the very top of the speed scale (USB4 Gen 4, 80 Gbps)
+    /// from an *unregistered* vendor. Real passive Gen 4 cables are short
+    /// Thunderbolt 5 cables from vendors with USB-IF registrations; this
+    /// combination was also verified empirically on this project's dev
+    /// hardware — a cable carrying exactly this profile measured 4–8×
+    /// slower than a correctly-programmed 40 Gbps cable on the identical
+    /// port/enclosure, while negotiating the identical link rate.
+    /// Deliberately narrow: an unregistered vendor alone is NOT flagged
+    /// (plenty of honest budget cables ship unregistered e-markers), and
+    /// neither is a high claim from a registered vendor. A flag means
+    /// "this claim is unusual, treat it skeptically" — never "this cable
+    /// is fake."
+    var claimLooksImplausible: Bool {
+        vendorID == nil
+            && (maxSpeedGbps ?? 0) >= 80
+            && (productType?.localizedCaseInsensitiveContains("passive") ?? false)
+    }
 }
 
 /// The port partner's (device/charger at the far end) PD identity from the
