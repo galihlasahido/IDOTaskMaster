@@ -21,6 +21,7 @@ import SwiftUI
 struct USBPortsPage: View {
     @StateObject private var model = USBPortsViewModel()
     @State private var selectedPortID: String?
+    @State private var isCableHealthSheetPresented = false
 
     var body: some View {
         Group {
@@ -175,12 +176,33 @@ struct USBPortsPage: View {
     @ViewBuilder
     private var portDetail: some View {
         if let port = selectedPort {
-            DetailPane(
-                title: port.name,
-                subtitle: port.isConnected ? (port.connectString ?? "Connected") : "Nothing attached",
-                systemImage: port.portType.hasPrefix("MagSafe") ? "magsafe.batterypack" : "cable.connector",
-                sections: detailSections(for: port)
-            )
+            VStack(spacing: 0) {
+                DetailPane(
+                    title: port.name,
+                    subtitle: port.isConnected ? (port.connectString ?? "Connected") : "Nothing attached",
+                    systemImage: port.portType.hasPrefix("MagSafe") ? "magsafe.batterypack" : "cable.connector",
+                    sections: detailSections(for: port)
+                )
+                // Only where it makes sense: a connected USB-C port. The
+                // test itself needs a writable volume on the attached
+                // drive, which the sheet asks for — it never picks one on
+                // its own.
+                if port.isConnected, !port.portType.hasPrefix("MagSafe") {
+                    Divider()
+                    HStack {
+                        Button("Test Cable Health\u{2026}") {
+                            isCableHealthSheetPresented = true
+                        }
+                        .help("Measure whether this port\u{2019}s link stalls between transfers \u{2014} the signature of a marginal cable that a negotiated link rate can\u{2019}t show")
+                        Spacer(minLength: 0)
+                    }
+                    .padding(10)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                }
+            }
+            .sheet(isPresented: $isCableHealthSheetPresented) {
+                CableHealthSheet(linkGbps: port.negotiatedLink?.gbps)
+            }
         } else {
             DetailPane(emptyMessage: "Select a port to view its details.")
         }
@@ -388,6 +410,188 @@ struct USBPortsPage: View {
             Spacer(minLength: 0)
         }
         .padding(.leading, CGFloat(device.depth) * 18)
+    }
+}
+
+// MARK: - Cable health test sheet
+
+/// The explicit, user-driven flow around `CableHealthTester` — see that
+/// type's doc comment for the method. This sheet's whole job is consent
+/// and clarity: the user picks which (external, writable) volume the
+/// 512 MB test file goes on, sees what will happen before starting, and
+/// gets the verdict with its reasoning rather than a bare number.
+private struct CableHealthSheet: View {
+    let linkGbps: Double?
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var model = CableHealthViewModel()
+    @State private var selectedVolumePath: String?
+
+    /// Every mounted non-system volume — the boot volume is excluded
+    /// (testing the internal SSD says nothing about a USB cable), the
+    /// rest are offered as-is since `DiskCapacity` doesn't carry an
+    /// internal/external flag; the explanatory text tells the user to
+    /// pick the volume on the drive behind this cable.
+    private var volumes: [DiskCapacity] {
+        DiskProvider.readVolumeCapacities().filter { !$0.isSystemVolume }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Test Cable Health")
+                .font(.title3)
+                .fontWeight(.semibold)
+
+            Text("Writes a temporary 512 MB file to the volume below, reads it back twice (once with 4 MB requests, once with 16 MB), and compares the two: a link that stalls between transfers \u{2014} the signature of a marginal cable \u{2014} shows up as large requests running far faster than small ones. The file is deleted afterwards.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Picker("Volume", selection: $selectedVolumePath) {
+                ForEach(volumes) { volume in
+                    Text(volume.volumeName ?? volume.id).tag(String?.some(volume.id))
+                }
+            }
+            .disabled(model.isRunning)
+
+            if volumes.isEmpty {
+                Text("No external volume is mounted \u{2014} the test needs a writable volume on the drive attached through this cable.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if model.isRunning {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let fraction = model.progressFraction {
+                        ProgressView(value: fraction)
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(model.progressPhase ?? "Running\u{2026}")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let result = model.result {
+                resultView(result)
+            }
+
+            if let failureReason = model.failureReason {
+                Text("Test failed: \(failureReason)")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack {
+                Spacer(minLength: 0)
+                Button(model.isRunning ? "Cancel Test" : "Close") {
+                    if model.isRunning {
+                        model.cancel()
+                    } else {
+                        dismiss()
+                    }
+                }
+                Button("Run Test") {
+                    guard let selectedVolumePath else { return }
+                    model.run(folderPath: selectedVolumePath, linkGbps: linkGbps)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.isRunning || selectedVolumePath == nil)
+            }
+        }
+        .padding(16)
+        .frame(width: 480, height: 380)
+        .onAppear {
+            if selectedVolumePath == nil { selectedVolumePath = volumes.first?.id }
+        }
+    }
+
+    private func resultView(_ result: CableHealthResult) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(
+                result.verdict.title,
+                systemImage: result.verdict == .healthy ? "checkmark.circle" : "exclamationmark.triangle"
+            )
+            .font(.callout)
+            .fontWeight(.semibold)
+            .foregroundStyle(result.verdict == .healthy ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange))
+
+            Text(result.verdict.explanation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 16) {
+                measurement("Write", result.writeMBps)
+                measurement("Read (4 MB)", result.smallChunkReadMBps)
+                measurement("Read (16 MB)", result.largeChunkReadMBps)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
+    }
+
+    private func measurement(_ label: String, _ mbps: Double) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(String(format: "%.0f MB/s", mbps))
+                .font(.callout)
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+    }
+}
+
+@MainActor
+private final class CableHealthViewModel: ObservableObject {
+    @Published private(set) var isRunning = false
+    @Published private(set) var progressPhase: String?
+    @Published private(set) var progressFraction: Double?
+    @Published private(set) var result: CableHealthResult?
+    @Published private(set) var failureReason: String?
+
+    private let tester = CableHealthTester()
+    private var runTask: Task<Void, Never>?
+
+    func run(folderPath: String, linkGbps: Double?) {
+        guard !isRunning else { return }
+        isRunning = true
+        result = nil
+        failureReason = nil
+        progressPhase = nil
+        progressFraction = nil
+
+        let stream = tester.run(folderPath: folderPath, linkGbps: linkGbps)
+        runTask = Task { [weak self] in
+            for await event in stream {
+                guard let self else { return }
+                switch event {
+                case .progress(let phase, let fraction):
+                    self.progressPhase = phase
+                    self.progressFraction = fraction
+                case .completed(let testResult):
+                    self.result = testResult
+                case .failed(let reason):
+                    self.failureReason = reason
+                case .cancelled:
+                    break
+                }
+            }
+            self?.isRunning = false
+            self?.progressPhase = nil
+            self?.progressFraction = nil
+        }
+    }
+
+    func cancel() {
+        tester.cancelActiveRun()
     }
 }
 
