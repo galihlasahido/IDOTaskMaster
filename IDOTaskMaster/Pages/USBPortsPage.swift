@@ -446,6 +446,20 @@ private struct CableHealthSheet: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // Hard-won measurement discipline: freshly-plugged drives
+            // measure far below their real speed (macOS does post-mount
+            // work, and the SSD's own controller resumes deferred
+            // housekeeping on power-up) — a 4\u{00D7} swing was reproduced
+            // on real hardware with nothing else changed. Advice, not
+            // enforcement: the run itself stays available immediately.
+            Label(
+                "Just plugged the drive in? Wait a minute or two first, run the test twice, and trust the second run \u{2014} a freshly-connected SSD measures well below its real speed while the system and the drive finish their post-connect housekeeping.",
+                systemImage: "clock"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
             Picker("Volume", selection: $selectedVolumePath) {
                 ForEach(volumes) { volume in
                     Text(volume.volumeName ?? volume.id).tag(String?.some(volume.id))
@@ -504,7 +518,7 @@ private struct CableHealthSheet: View {
             }
         }
         .padding(16)
-        .frame(width: 480, height: 380)
+        .frame(width: 480, height: 440)
         .onAppear {
             if selectedVolumePath == nil { selectedVolumePath = volumes.first?.id }
         }
