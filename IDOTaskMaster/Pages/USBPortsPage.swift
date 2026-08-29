@@ -202,6 +202,13 @@ struct USBPortsPage: View {
             ),
             DetailPaneField(label: "Supported", value: port.supportedTransports.joined(separator: ", ")),
         ]
+        if let link = port.negotiatedLink {
+            var linkValue = link.rateDescription
+            if let generation = link.generationDescription {
+                linkValue += " (\(generation))"
+            }
+            connectionFields.append(DetailPaneField(label: "Link Speed", value: linkValue, isMonospaced: true))
+        }
         if let orientation = port.plugOrientation {
             connectionFields.append(DetailPaneField(label: "Plug Orientation", value: orientation == 1 ? "Face up" : "Face down"))
         }
@@ -243,6 +250,13 @@ struct USBPortsPage: View {
                 value: cable.vendorID.map { String(format: "0x%04X", $0) } ?? "Unregistered",
                 isMonospaced: cable.vendorID != nil
             ))
+            // The line that answers "the cable says 80 Gbps, why is my
+            // drive slow?": the cable's rating is its own ceiling, while
+            // the link runs at the slowest party's speed — say which side
+            // is the limit when both numbers are known.
+            if let diagnosis = linkDiagnosis(cable: cable, link: port.negotiatedLink) {
+                cableFields.append(DetailPaneField(label: "Diagnosis", value: diagnosis))
+            }
             sections.append(DetailPaneSection(title: "Cable (e-marker)", fields: cableFields))
         } else if port.isConnected {
             // Not `isUnavailable` (which would render the literal
@@ -288,6 +302,21 @@ struct USBPortsPage: View {
         }
 
         return sections
+    }
+
+    /// Compares the cable's rated ceiling against the link that actually
+    /// came up. `nil` (no line at all) unless both numbers are known —
+    /// never a guess. The wording is careful about what each case proves:
+    /// a link *below* the cable's rating means the cable isn't the limit
+    /// (the device or the port is); a link *at* the cable's rating means
+    /// the cable is the ceiling being hit — it can't say what the device
+    /// could have done with a faster one.
+    private func linkDiagnosis(cable: USBCableInfo, link: USBLinkInfo?) -> String? {
+        guard let cableGbps = cable.maxSpeedGbps, let link, let linkGbps = link.gbps else { return nil }
+        if linkGbps < cableGbps {
+            return "Link runs at \(link.rateDescription) \u{2014} limited by the attached device or port, not this cable"
+        }
+        return "Link runs at \(link.rateDescription) \u{2014} this cable\u{2019}s rated ceiling"
     }
 
     // MARK: - Devices

@@ -55,6 +55,25 @@ struct USBPortSnapshot: Sendable, Equatable, Identifiable {
     /// The attached device/charger's PD identity (from the port's SOP
     /// responder), when one responded to Discover Identity.
     let partner: USBPartnerInfo?
+    /// The data link actually negotiated on this port right now (from the
+    /// port's active `IOPortTransportState*` child node) — what the
+    /// connection really runs at, as opposed to what the cable's e-marker
+    /// says the cable could do. `nil` when no data transport is active.
+    let negotiatedLink: USBLinkInfo?
+}
+
+/// The port's live, negotiated data link — read off the active
+/// `IOPortTransportStateCIO`/`USB3`/`USB2` child of the port node
+/// (preferring the fastest transport class that's active).
+struct USBLinkInfo: Sendable, Equatable {
+    /// `DataRateDescription`, macOS's own display string (e.g.
+    /// `"10 Gbps"`, `"480 Mbps"`).
+    let rateDescription: String
+    /// `SuperSpeedSignalingDescription` when present (e.g. `"Gen 2"`).
+    let generationDescription: String?
+    /// `rateDescription` parsed to Gbps for comparing against the cable's
+    /// rated ceiling; `nil` when the string isn't a recognizable rate.
+    let gbps: Double?
 }
 
 /// A cable e-marker's decoded identity — what the chip inside the cable
@@ -72,6 +91,9 @@ struct USBCableInfo: Sendable, Equatable {
     /// USB PD spec) — `nil` when the VDO wasn't present or the value is a
     /// reserved bit pattern this decoder doesn't recognize.
     let maxSpeedLabel: String?
+    /// The same field as a number, for comparing against the live link
+    /// rate. Same `nil` rule as `maxSpeedLabel`.
+    let maxSpeedGbps: Double?
     /// Decoded from the Cable VDO's VBUS Current Handling field (bits
     /// 6..5): 3 A (up to 60 W) or 5 A (up to 240 W with EPR). Same `nil`
     /// rule as `maxSpeedLabel`.
@@ -235,7 +257,7 @@ final class USBPortsProvider {
             amps = channel.amps
         }
 
-        let (cable, partner) = readPDIdentities(portService: service)
+        let (cable, partner, negotiatedLink) = readPortChildren(portService: service)
 
         return USBPortSnapshot(
             id: portDescription,
@@ -253,7 +275,8 @@ final class USBPortsProvider {
             volts: volts,
             amps: amps,
             cable: cable,
-            partner: partner
+            partner: partner,
+            negotiatedLink: isConnected ? negotiatedLink : nil
         )
     }
 
@@ -289,21 +312,27 @@ final class USBPortsProvider {
         return nil
     }
 
-    // MARK: - PD identities (cable e-marker + port partner)
+    // MARK: - Port children (PD identities + negotiated link)
 
-    /// Finds this port's SOP'/SOP responder nodes by walking the port
-    /// node's descendants — their `Description` properties are rooted at
-    /// the port's own (e.g. `"Port-USB-C@1/CC/SOP'"`), which is what ties
-    /// a responder to its port when several ports have things attached.
-    private static func readPDIdentities(portService: io_service_t) -> (USBCableInfo?, USBPartnerInfo?) {
+    /// One walk over the port node's descendants, collecting everything
+    /// that lives under it: the SOP'/SOP PD responder nodes (whose
+    /// `Description` is rooted at the port's own, e.g.
+    /// `"Port-USB-C@1/CC/SOP'"` — what ties a responder to its port when
+    /// several ports have things attached), and the active
+    /// `IOPortTransportState*` node describing the negotiated data link.
+    /// When more than one transport is active (a USB2 fallback link often
+    /// stays up alongside USB3), the fastest transport class wins: CIO
+    /// (Thunderbolt/USB4) over USB3 over USB2.
+    private static func readPortChildren(portService: io_service_t) -> (USBCableInfo?, USBPartnerInfo?, USBLinkInfo?) {
         var cable: USBCableInfo?
         var partner: USBPartnerInfo?
+        var linkByClass: [String: USBLinkInfo] = [:]
 
         var iterator: io_iterator_t = 0
         guard IORegistryEntryCreateIterator(
             portService, kIOServicePlane,
             IOOptionBits(kIORegistryIterateRecursively), &iterator
-        ) == KERN_SUCCESS else { return (nil, nil) }
+        ) == KERN_SUCCESS else { return (nil, nil, nil) }
         defer { IOObjectRelease(iterator) }
 
         var child = IOIteratorNext(iterator)
@@ -320,9 +349,43 @@ final class USBPortsProvider {
                 cable = readCableInfo(sopPrimeService: child)
             } else if className == "IOPortTransportComponentCCUSBPDSOP", partner == nil {
                 partner = readPartnerInfo(sopService: child)
+            } else if className.hasPrefix("IOPortTransportState"), linkByClass[className] == nil {
+                if let link = readLinkInfo(transportService: child) {
+                    linkByClass[className] = link
+                }
             }
         }
-        return (cable, partner)
+
+        let link = linkByClass["IOPortTransportStateCIO"]
+            ?? linkByClass["IOPortTransportStateUSB3"]
+            ?? linkByClass["IOPortTransportStateUSB2"]
+        return (cable, partner, link)
+    }
+
+    /// Reads one transport-state node's negotiated rate — only when the
+    /// transport is actually `Active` and reports a `DataRateDescription`.
+    private static func readLinkInfo(transportService: io_service_t) -> USBLinkInfo? {
+        guard let props = registryProperties(of: transportService),
+              (props["Active"] as? Bool) == true,
+              let rateDescription = props["DataRateDescription"] as? String, !rateDescription.isEmpty else {
+            return nil
+        }
+        return USBLinkInfo(
+            rateDescription: rateDescription,
+            generationDescription: props["SuperSpeedSignalingDescription"] as? String,
+            gbps: parseGbps(rateDescription)
+        )
+    }
+
+    /// `"10 Gbps"` → 10, `"480 Mbps"` → 0.48; `nil` for anything else.
+    private static func parseGbps(_ rateDescription: String) -> Double? {
+        let parts = rateDescription.split(separator: " ")
+        guard parts.count == 2, let value = Double(parts[0]) else { return nil }
+        switch parts[1] {
+        case "Gbps": return value
+        case "Mbps": return value / 1000
+        default: return nil
+        }
     }
 
     private static func readCableInfo(sopPrimeService: io_service_t) -> USBCableInfo? {
@@ -330,7 +393,7 @@ final class USBPortsProvider {
         let metadata = props["Metadata"] as? [String: Any]
 
         let vendorIDRaw = (props["Vendor ID"] as? Int) ?? (metadata?["Vendor ID"] as? Int)
-        var maxSpeedLabel: String?
+        var maxSpeed: (label: String, gbps: Double)?
         var currentRatingLabel: String?
 
         // The Cable VDO is the 4th VDO of a cable's Discover Identity
@@ -339,14 +402,15 @@ final class USBPortsProvider {
         // little-endian values.
         if let vdos = metadata?["VDOs"] as? [Data], vdos.count >= 4, vdos[3].count >= 4 {
             let cableVDO = vdos[3].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }.littleEndian
-            maxSpeedLabel = Self.cableSpeedLabel(rawBits: Int(cableVDO & 0b111))
+            maxSpeed = Self.cableSpeed(rawBits: Int(cableVDO & 0b111))
             currentRatingLabel = Self.cableCurrentLabel(rawBits: Int((cableVDO >> 5) & 0b11))
         }
 
         let info = USBCableInfo(
             productType: (props["Product Type Description"] as? String) ?? (metadata?["Product Type Description"] as? String),
             vendorID: (vendorIDRaw ?? 0) == 0 ? nil : vendorIDRaw,
-            maxSpeedLabel: maxSpeedLabel,
+            maxSpeedLabel: maxSpeed?.label,
+            maxSpeedGbps: maxSpeed?.gbps,
             currentRatingLabel: currentRatingLabel
         )
         // A node with nothing readable at all isn't a cable reading.
@@ -371,13 +435,13 @@ final class USBPortsProvider {
     }
 
     /// USB PD Cable VDO "USB Highest Speed" field (bits 2..0).
-    private static func cableSpeedLabel(rawBits: Int) -> String? {
+    private static func cableSpeed(rawBits: Int) -> (label: String, gbps: Double)? {
         switch rawBits {
-        case 0: return "USB 2.0 (480 Mbps)"
-        case 1: return "USB 3.2 Gen 1 (5 Gbps)"
-        case 2: return "USB 3.2 Gen 2 (10 Gbps)"
-        case 3: return "USB4 Gen 3 (40 Gbps)"
-        case 4: return "USB4 Gen 4 (80 Gbps)"
+        case 0: return ("USB 2.0 (480 Mbps)", 0.48)
+        case 1: return ("USB 3.2 Gen 1 (5 Gbps)", 5)
+        case 2: return ("USB 3.2 Gen 2 (10 Gbps)", 10)
+        case 3: return ("USB4 Gen 3 (40 Gbps)", 40)
+        case 4: return ("USB4 Gen 4 (80 Gbps)", 80)
         default: return nil // reserved bit pattern — honest "unknown"
         }
     }
