@@ -29,6 +29,7 @@
 		22EE91CD842F256ECCA97827 /* CommandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = D449179A32EA86FCEB04CED7 /* CommandPalette.swift */; };
 		2394A45431B245721FE740F9 /* StartupPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A196495F99DFA500D1C749E /* StartupPage.swift */; };
 		26FAF601EC944590F7F2A92E /* NPUProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A3CE67E37CE061716250E8 /* NPUProvider.swift */; };
+		29B6D04485337FE774AAA68F /* SupportLinksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A03AFA869996EBF6DB47AC2 /* SupportLinksView.swift */; };
 		2A6A328E7B821A8FB2066FD5 /* StartupProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A1DE4DC5D8E657A842378F9 /* StartupProvider.swift */; };
 		32F1EFC8CEE3863700C7A926 /* ServicesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767A492193B14936BA979B6C /* ServicesProvider.swift */; };
 		3462FF9454C981FB67F5B2D4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 19A552464A7635E7362DF790 /* Assets.xcassets */; };
@@ -146,6 +147,7 @@
 		01B4F1DCA3042387B807DDB6 /* HistoryGraph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryGraph.swift; sourceTree = "<group>"; };
 		0800A0570A1ED314A9FB5EC5 /* GPUProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPUProvider.swift; sourceTree = "<group>"; };
 		096E2E1EC7B07916871B3DF2 /* BenchmarkTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkTypes.swift; sourceTree = "<group>"; };
+		0A03AFA869996EBF6DB47AC2 /* SupportLinksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportLinksView.swift; sourceTree = "<group>"; };
 		0A196495F99DFA500D1C749E /* StartupPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupPage.swift; sourceTree = "<group>"; };
 		0CDD32B12D1A8337EC1828B0 /* MetricDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricDomain.swift; sourceTree = "<group>"; };
 		11BD91AEF51D6A148C48491F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -438,6 +440,7 @@
 				68DCE7335BAD7A079440CA79 /* PageToolbar.swift */,
 				D760AE74643351A36F23BA53 /* ProcessOutlineView.swift */,
 				A88C8A6D7BE78B68EF7DC8D0 /* StatTile.swift */,
+				0A03AFA869996EBF6DB47AC2 /* SupportLinksView.swift */,
 				D67B2CB9549337727B56CE60 /* UserOutlineView.swift */,
 			);
 			path = Components;
@@ -629,6 +632,7 @@
 				22CC578D6FEAC513750722EE /* StatTile.swift in Sources */,
 				77A91EA703CA6418B3859CAA /* StatusPalette.swift in Sources */,
 				E040AF010898EE05B166A678 /* SummaryPage.swift in Sources */,
+				29B6D04485337FE774AAA68F /* SupportLinksView.swift in Sources */,
 				4E703CC60166C7FF371E351B /* SystemInfoPage.swift in Sources */,
 				5BBC8A0F61086D438019EE5C /* SystemInfoProvider.swift in Sources */,
 				E604A70CCAB3A7A4A133484B /* ThermalProvider.swift in Sources */,

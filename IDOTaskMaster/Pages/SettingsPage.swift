@@ -161,6 +161,15 @@ private struct GeneralSettingsTab: View {
             Text("The page shown when the app launches.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Section {
+                SupportLinksView()
+                Text("IDOTaskMaster is free and open source. If it's useful, a small contribution helps keep it maintained.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Support the Developer")
+            }
         }
         .padding(20)
     }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Menu bar skeleton for the app, modeled on Activity Monitor's menus
@@ -51,6 +52,20 @@ struct AppCommands: Commands {
     @ObservedObject var commandPalette: CommandPaletteController
 
     var body: some Commands {
+        // Replaces the default "About IDOTaskMaster" item so the same two
+        // support links `SupportLinksView` draws in Settings ▸ General
+        // also reach anyone who never opens Settings — the standard
+        // panel's `credits` field accepts a plain `NSAttributedString`,
+        // and `.link` attributes on it are clickable, so this stays the
+        // real system About panel (icon, name, version, copyright already
+        // filled in automatically) with two extra lines rather than a
+        // fully custom window.
+        CommandGroup(replacing: .appInfo) {
+            Button("About IDOTaskMaster") {
+                Self.showAboutPanel()
+            }
+        }
+
         CommandGroup(before: .toolbar) {
             Button("Command Palette\u{2026}") {
                 commandPalette.present()
@@ -147,5 +162,52 @@ struct AppCommands: Commands {
                 settings.updateSpeed = speed
             }
         )
+    }
+
+    // MARK: - About panel
+
+    /// Shows the standard macOS About panel (app icon, name, version, and
+    /// `NSHumanReadableCopyright` from `Info.plist` — all filled in
+    /// automatically, untouched) with a two-line `credits` addition: the
+    /// same PayPal/Lynk.id links `SupportLinksView` draws in Settings,
+    /// here as plain clickable text (`NSAttributedString`'s `.link`
+    /// attribute — the panel's credits view renders and opens these like
+    /// any other rich-text link) since the panel has no SwiftUI slot for
+    /// real buttons.
+    private static func showAboutPanel() {
+        let credits = NSMutableAttributedString()
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+
+        credits.append(NSAttributedString(
+            string: "Support the Developer\n",
+            attributes: [
+                .font: NSFont.boldSystemFont(ofSize: 11),
+                .foregroundColor: NSColor.labelColor,
+            ]
+        ))
+
+        let links: [(title: String, url: String, color: NSColor)] = [
+            ("Support via PayPal", "https://paypal.me/abahido", NSColor(red: 0x00 / 255, green: 0x45 / 255, blue: 0x7C / 255, alpha: 1)),
+            ("Support via Lynk.id", "https://lynk.id/abahido/s/z52m3ekew032", NSColor(red: 0xFB / 255, green: 0x6B / 255, blue: 0x35 / 255, alpha: 1)),
+        ]
+        for (index, link) in links.enumerated() {
+            guard let url = URL(string: link.url) else { continue }
+            credits.append(NSAttributedString(
+                string: link.title,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                    .link: url,
+                    .foregroundColor: link.color,
+                ]
+            ))
+            if index < links.count - 1 {
+                credits.append(NSAttributedString(string: "\n"))
+            }
+        }
+        credits.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: credits.length))
+
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
