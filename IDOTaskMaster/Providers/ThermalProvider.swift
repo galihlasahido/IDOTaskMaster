@@ -60,8 +60,13 @@ struct ThermalSnapshot: Sendable, Equatable {
     /// `ThermalProvider`'s doc comment for why "the hottest sensor
     /// currently tracked" is this provider's honest definition of
     /// "hotspot" rather than one hardcoded "the CPU key" that this
-    /// provider cannot verify is correct on every Mac model. `nil` when
-    /// `dieSensors` is empty (no AppleSMC connection, or none of the
+    /// provider cannot verify is correct on every Mac model — with one
+    /// deliberate exclusion: voltage-regulator sensors (SMC keys prefixed
+    /// `"TVM"`) never count toward this headline, even though they're
+    /// still tracked in `dieSensors`. See
+    /// `ThermalProvider.isVoltageRegulatorKey(_:)` for why. `nil` when
+    /// `dieSensors` is empty, or every reading this tick happened to be a
+    /// voltage-regulator sensor (no AppleSMC connection, or none of the
     /// tracked keys read back this tick).
     let hotspotCelsius: Double?
     /// Every currently-tracked SMC temperature sensor's live reading this
@@ -127,7 +132,20 @@ struct ThermalSnapshot: Sendable, Equatable {
 /// `hotspotCelsius` is then simply the max of whichever tracked keys read
 /// back a value this tick — see `ThermalSnapshot.hotspotCelsius`'s doc
 /// comment for why that, not one hardcoded "the" key, is this provider's
-/// honest notion of "hotspot".
+/// honest notion of "hotspot" — except for one keyed-out family, found the
+/// same empirical way as the rest of this provider's design: on this dev
+/// Mac, the single hottest SMC temperature key by a wide margin (`"TVMR"`/
+/// `"TVMr"`, ~110-120°C sustained, hotter than every compute-die sensor
+/// found) is a voltage-regulator temperature, not a die temperature —
+/// VRMs run that hot *by design*, even at idle, so letting one dominate
+/// "hotspot" reported a real reading under a misleading headline (a user
+/// reasonably reading "111°C" as "how hot is my Mac" when the actual
+/// compute dies were 60-70°C — see `isVoltageRegulatorKey(_:)`). Every
+/// `"TVM"`-prefixed key is excluded from `hotspotCelsius` for this reason,
+/// while still appearing in `dieSensors`' full sensor list — this is a
+/// narrower, verified exclusion, not a return to guessing which key is
+/// "the CPU."
+
 ///
 /// A `final class`, matching `EnergyProvider`'s convention for the same
 /// reason: the AppleSMC connection is opened once and kept for the app's
@@ -190,10 +208,27 @@ final class ThermalProvider: Provider {
         readings.sort { $0.key < $1.key }
 
         return ThermalSnapshot(
-            hotspotCelsius: readings.map(\.celsius).max(),
+            hotspotCelsius: readings
+                .filter { !Self.isVoltageRegulatorKey($0.key) }
+                .map(\.celsius)
+                .max(),
             dieSensors: readings,
             thermalPressure: pressure
         )
+    }
+
+    /// `true` for the `"TVM*"` SMC key family (`"TVMR"`, `"TVMr"`,
+    /// `"TVMX"`, `"TVMx"`, `"TVMD"` on this dev Mac) — voltage-regulator
+    /// temperatures, verified by dumping every discovered key: this
+    /// family read ~110-120°C sustained regardless of system load, well
+    /// above every compute-die sensor found (60-70°C under the same
+    /// conditions), which matches VRMs' normal always-hot operating range
+    /// rather than anything resembling "how hot is this Mac." Excluded
+    /// from `ThermalSnapshot.hotspotCelsius` only — see that property's
+    /// doc comment — never from `dieSensors`, so the full sensor grid
+    /// still shows them for anyone who wants the raw data.
+    private static func isVoltageRegulatorKey(_ key: String) -> Bool {
+        key.hasPrefix("TVM")
     }
 
     // MARK: - AppleSMC connection (self-contained — see this type's doc comment)
