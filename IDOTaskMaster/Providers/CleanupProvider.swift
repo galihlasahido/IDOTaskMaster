@@ -15,6 +15,7 @@ enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
     case xcodeDerivedData
     case developerToolCaches
     case commandLineToolCaches
+    case installers
     case trash
 
     var id: String { rawValue }
@@ -26,6 +27,7 @@ enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
         case .xcodeDerivedData: return "Xcode Derived Data"
         case .developerToolCaches: return "Simulator & Device Support"
         case .commandLineToolCaches: return "Command-Line Tool Caches"
+        case .installers: return "Leftover Installers"
         case .trash: return "Trash"
         }
     }
@@ -37,6 +39,7 @@ enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
         case .xcodeDerivedData: return "hammer"
         case .developerToolCaches: return "cpu"
         case .commandLineToolCaches: return "terminal"
+        case .installers: return "shippingbox"
         case .trash: return "trash"
         }
     }
@@ -56,6 +59,8 @@ enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
             return "Simulator caches and device-support files \u{2014} recreated the next time you use them."
         case .commandLineToolCaches:
             return "Downloaded package caches (npm, Gradle, Cargo, and similar tools) \u{2014} re-downloaded on demand."
+        case .installers:
+            return "\u{2018}.dmg\u{2019}/\u{2018}.pkg\u{2019} installers in Downloads, at least a week old \u{2014} the app they installed is already on your Mac; re-download if you ever need to reinstall."
         case .trash:
             return "Items already in the Trash \u{2014} emptying is permanent."
         }
@@ -214,10 +219,49 @@ actor CleanupProvider {
                 ("Cargo Registry Cache", "\(home)/.cargo/registry/cache"),
                 ("Generic Cache (~/.cache)", "\(home)/.cache"),
             ])
+        case .installers:
+            return installerItems(root: "\(home)/Downloads", category: category, fileManager: fileManager)
         case .trash:
             return []
         }
     }
+
+    /// `.dmg`/`.pkg` files sitting directly in `~/Downloads` — unlike every
+    /// other category here (a fixed, well-known cache/log root), Downloads
+    /// holds all sorts of files that aren't safe to touch, so this is
+    /// filtered two ways rather than listed wholesale: by extension (only
+    /// the two unambiguous installer-archive formats — never `.zip`, which
+    /// is just as often a document or dataset as an app), and by age
+    /// (`installerMinimumAge`, via `URLResourceKey.addedToDirectoryDate` —
+    /// Finder's own "Date Added" column, verified directly to report the
+    /// real value rather than nil — so a DMG downloaded five minutes ago
+    /// to actually install right now is never offered). A file whose age
+    /// can't be determined at all is skipped rather than shown: an unknown
+    /// age is treated as "too recent to be safe," the more conservative
+    /// reading for a safety filter, not a display value where "Unavailable"
+    /// would be the honest answer instead.
+    private static func installerItems(root: String, category: CleanupCategory, fileManager: FileManager) -> [CleanupItem] {
+        guard let names = try? fileManager.contentsOfDirectory(atPath: root) else { return [] }
+        let cutoff = Date().addingTimeInterval(-installerMinimumAge)
+
+        return names.compactMap { name -> CleanupItem? in
+            let lowercased = name.lowercased()
+            guard lowercased.hasSuffix(".dmg") || lowercased.hasSuffix(".pkg") else { return nil }
+
+            let path = "\(root)/\(name)"
+            guard let entry = statEntry(atPath: path), !entry.isDirectory, !entry.isSymbolicLink else { return nil }
+
+            let url = URL(fileURLWithPath: path)
+            guard let addedDate = (try? url.resourceValues(forKeys: [.addedToDirectoryDateKey]))?.addedToDirectoryDate,
+                  addedDate < cutoff else { return nil }
+
+            return CleanupItem(path: path, name: name, category: category, sizeBytes: entry.realSizeBytes)
+        }.sorted { $0.sizeBytes > $1.sizeBytes }
+    }
+
+    /// How old a `.dmg`/`.pkg` in Downloads must be before it's offered —
+    /// see `installerItems`'s doc comment.
+    private static let installerMinimumAge: TimeInterval = 7 * 24 * 60 * 60
 
     /// Lists `root`'s immediate children as individually selectable items
     /// — used for categories whose whole point is "one subfolder per app/
