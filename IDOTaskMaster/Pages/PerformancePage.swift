@@ -486,6 +486,11 @@ private struct MetricCard: View {
     let label: String
     let value: String
     var isUnavailable: Bool = false
+    /// Overrides the value's color when present and `!isUnavailable` —
+    /// every other reading in this grid is neutral `.primary` text, but a
+    /// genuine warning (e.g. a failing SMART status) is worth standing
+    /// out rather than blending in with an ordinary number.
+    var valueColor: Color? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -497,7 +502,7 @@ private struct MetricCard: View {
                 .font(.body)
                 .fontWeight(.medium)
                 .monospacedDigit()
-                .foregroundStyle(isUnavailable ? Color(nsColor: .tertiaryLabelColor) : .primary)
+                .foregroundStyle(isUnavailable ? Color(nsColor: .tertiaryLabelColor) : (valueColor ?? .primary))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -994,6 +999,12 @@ private struct DiskDetailView: View {
                         MetricCard(label: "Response Time", value: "Unavailable", isUnavailable: true)
                         MetricCard(label: "Capacity", value: Fmt.bytes(systemVolume?.totalBytes), isUnavailable: systemVolume?.totalBytes == nil)
                         MetricCard(label: "System Disk", value: systemDiskLabel, isUnavailable: headlineUnit?.isInternal == nil)
+                        MetricCard(
+                            label: "SMART Status",
+                            value: headlineUnit?.smartStatus?.displayLabel ?? "Unavailable",
+                            isUnavailable: headlineUnit?.smartStatus == nil,
+                            valueColor: headlineUnit?.smartStatus == .failing ? Color(nsColor: .systemRed) : nil
+                        )
                         MetricCard(label: "NVMe Type", value: "Unavailable", isUnavailable: true)
                     }
                 }
@@ -1062,6 +1073,16 @@ private struct StorageDetailsSheet: View {
             Text("\(unit.id) · Read \(Fmt.bytesPerSecond(unit.readBytesPerSecond)) · Write \(Fmt.bytesPerSecond(unit.writeBytesPerSecond))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            // SMART is checked in the background and only every few
+            // minutes (see `DiskSMARTStatusBox`) — omitted entirely until
+            // the first check for this disk completes, rather than
+            // showing a misleading "Unavailable" for what's really just
+            // "not checked yet."
+            if let smartStatus = unit.smartStatus {
+                Text("SMART: \(smartStatus.displayLabel)")
+                    .font(.caption)
+                    .foregroundStyle(smartStatus == .failing ? Color(nsColor: .systemRed) : .secondary)
+            }
         }
     }
 

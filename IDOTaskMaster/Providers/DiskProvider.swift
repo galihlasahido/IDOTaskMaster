@@ -49,6 +49,62 @@ struct DiskUnitSnapshot: Sendable, Equatable, Identifiable {
     let totalBytesWritten: UInt64
     let totalReadOperations: UInt64
     let totalWriteOperations: UInt64
+    /// This physical disk's S.M.A.R.T. self-assessment — see
+    /// `DiskSMARTStatus`'s own doc comment for the source and why it's
+    /// cached/refreshed rather than read fresh every tick. `nil` until the
+    /// first background refresh for this disk completes (not yet
+    /// checked), distinct from `.notSupported` (checked, and this
+    /// enclosure/controller doesn't expose SMART at all — most USB
+    /// enclosures).
+    let smartStatus: DiskSMARTStatus?
+}
+
+/// A physical disk's S.M.A.R.T. self-assessment, read from `diskutil info
+/// -plist <bsdName>`'s `SMARTStatus` key — the same call Disk Utility.app
+/// itself makes. There's no IOKit registry property for this on
+/// Apple-silicon internal SSDs (verified directly: `AppleANS3CGv2Controller`
+/// and its `IOEmbeddedNVMeBlockDevice`/`AppleNVMeNamespaceDevice` children
+/// publish no SMART-shaped key at all — unlike classic SATA/ATA SMART,
+/// Apple's own NVMe controller keeps that health data behind a private
+/// framework `diskutil` itself calls into), so shelling out is the only
+/// way to get it — same "no IOKit property exists" situation
+/// `SystemInfoProvider` is already in for `system_profiler`.
+enum DiskSMARTStatus: Sendable, Equatable {
+    /// The common case for a healthy internal disk.
+    case verified
+    /// The disk's own controller is reporting a SMART failure — the one
+    /// reading in this whole app that arguably deserves a color, not just
+    /// plain text (see `PerformancePage`'s `MetricCard` usage).
+    case failing
+    /// Most USB/Thunderbolt storage enclosures don't pass SMART data
+    /// through at all — verified directly on this project's own external
+    /// test drive. An honest, expected answer, not a degraded one.
+    case notSupported
+    /// A `SMARTStatus` value `diskutil` returned that isn't one of the
+    /// three documented ones above — shown verbatim rather than silently
+    /// mapped to the nearest case, the same "an unrecognized state is its
+    /// own honest answer, not a guess" rule `ThermalPressureLevel.unknown`
+    /// follows.
+    case other(String)
+
+    init?(rawValue: String) {
+        switch rawValue {
+        case "Verified": self = .verified
+        case "Failing": self = .failing
+        case "Not Supported": self = .notSupported
+        case "": return nil
+        default: self = .other(rawValue)
+        }
+    }
+
+    var displayLabel: String {
+        switch self {
+        case .verified: return "Verified"
+        case .failing: return "Failing"
+        case .notSupported: return "Not Supported"
+        case .other(let raw): return raw
+        }
+    }
 }
 
 /// One mounted volume's storage capacity — PLAN.md §4 M2's "capacity".
@@ -178,6 +234,11 @@ final class DiskProvider: Provider {
     /// same "no prior sample, honestly `nil`" rule `CPUProvider` follows.
     private var previousUnitStates: [String: DiskUnitRawState] = [:]
 
+    /// SMART status per BSD name, refreshed in the background — see this
+    /// property's own type doc comment for why `sample()` only ever reads
+    /// from it instantly rather than shelling out itself.
+    private let smartStatusBox = DiskSMARTStatusBox()
+
     func sample() throws -> DiskSnapshot {
         let rawUnits: [RawDiskUnit]
         do {
@@ -248,12 +309,19 @@ final class DiskProvider: Provider {
                     totalBytesRead: unit.bytesRead,
                     totalBytesWritten: unit.bytesWritten,
                     totalReadOperations: unit.readOperations,
-                    totalWriteOperations: unit.writeOperations
+                    totalWriteOperations: unit.writeOperations,
+                    smartStatus: smartStatusBox.cachedStatus(for: unit.bsdName)
                 )
             )
         }
 
         previousUnitStates = newStates
+        // Fire-and-forget: refreshes any disk whose cached SMART status is
+        // missing or stale, off this tick entirely — this tick's snapshot
+        // uses whatever was already cached (possibly `nil`, the very first
+        // time a disk is seen) and the next refreshed value shows up on a
+        // later tick once the background check finishes.
+        smartStatusBox.refreshIfStale(bsdNames: unitSnapshots.map(\.id))
 
         // Headline activePercent: the internal disk if one is known, else
         // whichever unit was found first (see this type's doc comment).
@@ -488,5 +556,119 @@ final class DiskProvider: Provider {
     /// from an unsigned underflow.
     private static func nonNegativeDelta(_ current: UInt64, _ previous: UInt64) -> UInt64? {
         current >= previous ? current - previous : nil
+    }
+}
+
+// MARK: - SMART status (background-refreshed, never blocks a tick)
+
+/// Thread-safe SMART-status cache, refreshed by shelling out to
+/// `diskutil info -plist <bsdName>` on a background queue — never on
+/// `DiskProvider`'s own tick path. `DiskProvider.sample()` is a plain
+/// synchronous `throws` function called directly from `Sampler`'s
+/// actor-isolated `tick()` (see that method's own doc comment), so
+/// blocking it on a subprocess — even a fast one — would stall every
+/// domain's snapshot for that tick, not just disk's. SMART status also
+/// essentially never changes tick-to-tick, so there is nothing lost by
+/// caching it: `refreshIfStale` re-checks a given disk at most once every
+/// `refreshInterval`, and `cachedStatus(for:)` always returns instantly,
+/// `nil` until that disk's first background check completes.
+///
+/// A plain `NSLock`-guarded class (`@unchecked Sendable`), matching this
+/// codebase's established pattern for cross-context mutable state
+/// (`BenchmarkCancellationToken`, `DiskSpaceAccumulator`) rather than an
+/// actor: the background refresh's completion handler needs to write from
+/// an arbitrary `DispatchQueue.global` thread, and a lock is simpler here
+/// than hopping onto an actor just to set a dictionary entry.
+private final class DiskSMARTStatusBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cache: [String: DiskSMARTStatus] = [:]
+    private var lastCheckedAt: [String: Date] = [:]
+    private var inFlight: Set<String> = []
+
+    /// How often a given disk's SMART status is re-checked. Generous on
+    /// purpose — SMART status is a slow-changing, low-urgency reading (see
+    /// this type's own doc comment), and every refresh is a real
+    /// subprocess launch.
+    private static let refreshInterval: TimeInterval = 300
+
+    func cachedStatus(for bsdName: String) -> DiskSMARTStatus? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache[bsdName]
+    }
+
+    /// Kicks off a background refresh for every `bsdNames` entry whose
+    /// cached value is missing or older than `refreshInterval`, skipping
+    /// any already in flight. Returns immediately in every case — this is
+    /// the fire-and-forget half `DiskProvider.sample()` calls every tick;
+    /// the actual subprocess work happens later, off this call entirely.
+    func refreshIfStale(bsdNames: [String]) {
+        var toRefresh: [String] = []
+        lock.lock()
+        let now = Date()
+        for name in bsdNames {
+            let isStale = lastCheckedAt[name].map { now.timeIntervalSince($0) > Self.refreshInterval } ?? true
+            guard isStale, !inFlight.contains(name) else { continue }
+            inFlight.insert(name)
+            toRefresh.append(name)
+        }
+        lock.unlock()
+
+        for name in toRefresh {
+            // Matches `SystemInfoProvider.runSystemProfiler`'s own
+            // reasoning for using a plain background dispatch queue
+            // rather than `Task.detached`: `Process`/`Pipe`'s blocking
+            // calls have no async variant, and running them on the
+            // cooperative thread pool would tie up one of its limited
+            // threads for however long `diskutil` takes.
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let status = Self.readSMARTStatus(bsdName: name)
+                self?.store(bsdName: name, status: status)
+            }
+        }
+    }
+
+    private func store(bsdName: String, status: DiskSMARTStatus?) {
+        lock.lock()
+        if let status {
+            cache[bsdName] = status
+        }
+        lastCheckedAt[bsdName] = Date()
+        inFlight.remove(bsdName)
+        lock.unlock()
+    }
+
+    /// Launches `/usr/sbin/diskutil info -plist <bsdName>` and pulls out
+    /// its `SMARTStatus` string — the exact same call Disk Utility.app
+    /// itself makes (there is no lower-level API for this on
+    /// Apple-silicon internal SSDs — see `DiskSMARTStatus`'s doc comment).
+    /// `nil` on any failure along the way: launch failure, non-zero exit,
+    /// unparseable plist, or a missing key (all observed as never
+    /// happening for a real `bsdName` on this dev Mac, but none of them
+    /// should ever crash or fabricate a status).
+    private static func readSMARTStatus(bsdName: String) -> DiskSMARTStatus? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
+        process.arguments = ["info", "-plist", bsdName]
+
+        let stdoutPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = Pipe() // discarded — diagnostic text only
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0,
+              let plist = try? PropertyListSerialization.propertyList(from: stdoutData, format: nil) as? [String: Any],
+              let raw = plist["SMARTStatus"] as? String else {
+            return nil
+        }
+        return DiskSMARTStatus(rawValue: raw)
     }
 }
