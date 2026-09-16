@@ -16,6 +16,13 @@ enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
     case developerToolCaches
     case commandLineToolCaches
     case installers
+    /// Not one of `CleanupProvider.scan()`'s fixed well-known locations —
+    /// this tag only ever gets attached to a `CleanupItem` built from a
+    /// `ProjectArtifactsScanner` result (see `CleanupPage`'s "Project
+    /// Folders" tab), so `clean(_:)`/`CleanupLogEntry` can describe it
+    /// the same way as every other category without `CleanupItem` needing
+    /// an optional `category` just for this one, dynamically-rooted case.
+    case projectArtifacts
     case trash
 
     var id: String { rawValue }
@@ -28,6 +35,7 @@ enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
         case .developerToolCaches: return "Simulator & Device Support"
         case .commandLineToolCaches: return "Command-Line Tool Caches"
         case .installers: return "Leftover Installers"
+        case .projectArtifacts: return "Project Build Artifacts"
         case .trash: return "Trash"
         }
     }
@@ -40,6 +48,7 @@ enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
         case .developerToolCaches: return "cpu"
         case .commandLineToolCaches: return "terminal"
         case .installers: return "shippingbox"
+        case .projectArtifacts: return "folder.badge.gearshape"
         case .trash: return "trash"
         }
     }
@@ -61,6 +70,8 @@ enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
             return "Downloaded package caches (npm, Gradle, Cargo, and similar tools) \u{2014} re-downloaded on demand."
         case .installers:
             return "\u{2018}.dmg\u{2019}/\u{2018}.pkg\u{2019} installers in Downloads, at least a week old \u{2014} the app they installed is already on your Mac; re-download if you ever need to reinstall."
+        case .projectArtifacts:
+            return "Dependencies and build output your tools regenerate on the next install/build (npm, Cargo, a Python venv, CocoaPods, Gradle, SwiftPM)."
         case .trash:
             return "Items already in the Trash \u{2014} emptying is permanent."
         }
@@ -189,7 +200,7 @@ actor CleanupProvider {
         let home = fileManager.homeDirectoryForCurrentUser.path
 
         let categories = CleanupCategory.allCases
-            .filter { $0 != .trash }
+            .filter { $0 != .trash && $0 != .projectArtifacts }
             .map { category in
                 CleanupCategorySummary(category: category, items: items(for: category, home: home, fileManager: fileManager))
             }
@@ -221,6 +232,12 @@ actor CleanupProvider {
             ])
         case .installers:
             return installerItems(root: "\(home)/Downloads", category: category, fileManager: fileManager)
+        case .projectArtifacts:
+            // Unreachable via `scan()` — see this case's own doc comment
+            // on `CleanupCategory`. Only here to keep the switch
+            // exhaustive against a case Swift can't otherwise prove this
+            // function never receives.
+            return []
         case .trash:
             return []
         }

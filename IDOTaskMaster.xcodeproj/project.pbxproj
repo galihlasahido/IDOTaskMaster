@@ -124,6 +124,8 @@
 		D813FCB27A3DCA74B8DDF044 /* OpenFilesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F0C3EA346AEDC89D93A1EB /* OpenFilesProvider.swift */; };
 		D9951B77215370690E4A65F1 /* ProviderProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80F182C30E1C87751B8F640 /* ProviderProtocol.swift */; };
 		DB0F47F565818A2F160595EA /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 442C2C82205B40F42175416D /* HistoryStore.swift */; };
+		DB8B380C8524BF5D4536AA0E /* ProjectArtifactsScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA65BBCF1E6340DFB36F9D0F /* ProjectArtifactsScanner.swift */; };
+		DF148AB3B38D7905D3B4CF25 /* ProjectArtifactsScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA65BBCF1E6340DFB36F9D0F /* ProjectArtifactsScanner.swift */; };
 		DF303951E1D0C3E7FD7E17F2 /* ProcessesPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5009B2554DAE801AA048226B /* ProcessesPage.swift */; };
 		DF39D83CFD0FAAF201946714 /* GlobalShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEA4593D403174148C5D28C /* GlobalShortcutManager.swift */; };
 		E040AF010898EE05B166A678 /* SummaryPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A45DCCC8111EA0D3E2BBB999 /* SummaryPage.swift */; };
@@ -246,6 +248,7 @@
 		F598CE237EF69DA5656D0164 /* CleanupPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupPage.swift; sourceTree = "<group>"; };
 		F9232D29E0AAE7CFF1D187A5 /* ConnectionsHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionsHandlers.swift; sourceTree = "<group>"; };
 		F9321D3C36D8BFA9BAC51E21 /* ToolDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolDispatcher.swift; sourceTree = "<group>"; };
+		FA65BBCF1E6340DFB36F9D0F /* ProjectArtifactsScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectArtifactsScanner.swift; sourceTree = "<group>"; };
 		FADFD7FF9092C34E0DFA97A4 /* AppCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCommands.swift; sourceTree = "<group>"; };
 		FEA91F28AF6F38E85240A155 /* HostnameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostnameResolver.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -417,6 +420,7 @@
 				99A3CE67E37CE061716250E8 /* NPUProvider.swift */,
 				C9F0C3EA346AEDC89D93A1EB /* OpenFilesProvider.swift */,
 				E504A60690DE13EC1668B422 /* ProcessProvider.swift */,
+				FA65BBCF1E6340DFB36F9D0F /* ProjectArtifactsScanner.swift */,
 				767A492193B14936BA979B6C /* ServicesProvider.swift */,
 				C2F78805C73D641CFA76A39F /* SigningInfoProvider.swift */,
 				4A1DE4DC5D8E657A842378F9 /* StartupProvider.swift */,
@@ -618,6 +622,7 @@
 				8447A4BA3ADC9BF93BA454BE /* ProcessOutlineView.swift in Sources */,
 				F5AAD465BCC57B7771D25255 /* ProcessProvider.swift in Sources */,
 				DF303951E1D0C3E7FD7E17F2 /* ProcessesPage.swift in Sources */,
+				DF148AB3B38D7905D3B4CF25 /* ProjectArtifactsScanner.swift in Sources */,
 				D9951B77215370690E4A65F1 /* ProviderProtocol.swift in Sources */,
 				F1CC931379C79593987B8F20 /* Sampler.swift in Sources */,
 				D49AAB97E8C22DC2126941D0 /* ServicesPage.swift in Sources */,
@@ -677,6 +682,7 @@
 				D813FCB27A3DCA74B8DDF044 /* OpenFilesProvider.swift in Sources */,
 				85C54A58F36673ADC7C52EA3 /* ProcessHandlers.swift in Sources */,
 				48EA073C77A5344318EBC1A8 /* ProcessProvider.swift in Sources */,
+				DB8B380C8524BF5D4536AA0E /* ProjectArtifactsScanner.swift in Sources */,
 				0D719A3DECEE7A0267E4B312 /* ProviderProtocol.swift in Sources */,
 				21C9BAC083AEAFABF65841BC /* ProviderRegistry.swift in Sources */,
 				83B195FE019F308D2FAC8AF5 /* Sampler.swift in Sources */,

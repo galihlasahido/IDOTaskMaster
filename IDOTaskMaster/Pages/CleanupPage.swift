@@ -1,5 +1,22 @@
 import SwiftUI
 
+/// `CleanupPage`'s segmented tab picker — see that type's own doc comment
+/// for why these two share one page instead of splitting into separate
+/// sidebar entries.
+private enum CleanupTab: String, CaseIterable, Identifiable {
+    case wellKnown
+    case projectFolders
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .wellKnown: return "Well-Known Locations"
+        case .projectFolders: return "Project Folders"
+        }
+    }
+}
+
 /// Clean Up page — finds well-known regenerable caches/logs/build output
 /// via `CleanupProvider` and lets the user choose what to clear. Like
 /// `DiskSpacePage`, this does **not** scan on `onAppear`: scanning walks
@@ -13,29 +30,58 @@ import SwiftUI
 /// (reversible) before doing anything. Emptying the Trash is the one
 /// irreversible action here, kept as its own separate button with its own,
 /// more emphatic confirmation.
+///
+/// Two tabs share one `CleanupViewModel` and one history log: **Well-Known
+/// Locations** (this type's original scope — fixed, well-known system
+/// paths this app already knows how to find) and **Project Folders**
+/// (`ProjectArtifactsScanner` — dependency/build-output directories like
+/// `node_modules` or a Python `.venv`, which live at unpredictable paths
+/// inside whatever project folder the user points this at, so they need
+/// their own user-chosen-root scan rather than a fixed location). Kept as
+/// two tabs of the same page rather than a separate sidebar entry: both
+/// are "find things safe to clear and let me choose," just with a
+/// different *source* of candidates.
 struct CleanupPage: View {
     @StateObject private var model = CleanupViewModel()
     @State private var searchText = ""
     @State private var showingCleanConfirmation = false
+    @State private var showingCleanProjectArtifactsConfirmation = false
     @State private var showingEmptyTrashConfirmation = false
     @State private var showingHistory = false
+    @State private var selectedTab: CleanupTab = .wellKnown
 
     var body: some View {
         VStack(spacing: 0) {
             statusLine
             Divider()
-            content
+            tabPicker
+            Divider()
+            tabContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .pageToolbar(searchText: $searchText, searchPrompt: "Filter Cache Items")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) { scanButton }
-            ToolbarItem(placement: .primaryAction) { cleanButton }
-            ToolbarItem(placement: .primaryAction) { emptyTrashButton }
+            switch selectedTab {
+            case .wellKnown:
+                ToolbarItem(placement: .primaryAction) { scanButton }
+                ToolbarItem(placement: .primaryAction) { cleanButton }
+                ToolbarItem(placement: .primaryAction) { emptyTrashButton }
+            case .projectFolders:
+                ToolbarItem(placement: .primaryAction) { chooseProjectFolderButton }
+                ToolbarItem(placement: .primaryAction) { scanProjectFolderButton }
+                ToolbarItem(placement: .primaryAction) { cleanProjectArtifactsButton }
+            }
             ToolbarItem(placement: .primaryAction) { historyButton }
         }
         .sheet(isPresented: $showingCleanConfirmation) {
-            CleanConfirmationSheet(items: model.selectedItems, model: model)
+            CleanConfirmationSheet(items: model.selectedItems) { items in
+                await model.clean(items)
+            }
+        }
+        .sheet(isPresented: $showingCleanProjectArtifactsConfirmation) {
+            CleanConfirmationSheet(items: model.selectedProjectArtifactItems) { items in
+                await model.cleanProjectArtifacts(items)
+            }
         }
         .sheet(isPresented: $showingEmptyTrashConfirmation) {
             EmptyTrashConfirmationSheet(model: model)
@@ -51,6 +97,30 @@ struct CleanupPage: View {
             Button("OK") {}
         } message: { message in
             Text(message)
+        }
+    }
+
+    // MARK: - Tabs
+
+    private var tabPicker: some View {
+        Picker("Clean Up Tab", selection: $selectedTab) {
+            ForEach(CleanupTab.allCases) { tab in
+                Text(tab.title).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .wellKnown:
+            content
+        case .projectFolders:
+            projectFoldersContent
         }
     }
 
@@ -105,6 +175,63 @@ struct CleanupPage: View {
             Label("History\u{2026}", systemImage: "clock.arrow.circlepath")
         }
         .help("See past clean and empty-trash runs")
+    }
+
+    // MARK: - Toolbar (Project Folders tab)
+
+    private var chooseProjectFolderButton: some View {
+        Button {
+            chooseProjectFolder()
+        } label: {
+            Label("Choose Folder\u{2026}", systemImage: "folder")
+        }
+        .disabled(model.isScanningProjectFolder || model.isCleaning)
+        .help(model.projectFolderPath.map { "Currently \u{201C}\(($0 as NSString).lastPathComponent)\u{201D}" } ?? "Choose a project folder to scan for dependency/build-output directories")
+    }
+
+    private func chooseProjectFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        if let current = model.projectFolderPath {
+            panel.directoryURL = URL(fileURLWithPath: current, isDirectory: true)
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.chooseProjectFolder(url.path)
+    }
+
+    private var scanProjectFolderButton: some View {
+        Button {
+            if model.isScanningProjectFolder {
+                model.cancelProjectScan()
+            } else {
+                model.scanProjectFolder()
+            }
+        } label: {
+            if model.isScanningProjectFolder {
+                Label("Cancel", systemImage: "xmark.circle")
+            } else {
+                Label("Scan", systemImage: "magnifyingglass")
+            }
+        }
+        .disabled(model.projectFolderPath == nil || model.isCleaning)
+        .help(model.isScanningProjectFolder ? "Cancel the current scan" : "Scan for node_modules, target, .venv, and similar directories")
+    }
+
+    private var cleanProjectArtifactsButton: some View {
+        Button {
+            showingCleanProjectArtifactsConfirmation = true
+        } label: {
+            Label("Clean Selected\u{2026}", systemImage: "trash")
+        }
+        .disabled(model.selectedProjectArtifactItems.isEmpty || model.isCleaning)
+        .help(
+            model.selectedProjectArtifactItems.isEmpty
+                ? "Select items to clean"
+                : "Move \(model.selectedProjectArtifactItems.count) selected item(s) to the Trash\u{2026}"
+        )
     }
 
     // MARK: - Status line
@@ -277,6 +404,131 @@ struct CleanupPage: View {
         )
     }
 
+    // MARK: - Content (Project Folders tab)
+
+    @ViewBuilder
+    private var projectFoldersContent: some View {
+        if model.isScanningProjectFolder, let progress = model.projectScanProgress {
+            projectScanProgressBanner(progress)
+        }
+        if let result = model.projectScanResult {
+            if result.entries.isEmpty {
+                projectFoldersEmptyState(message: "No dependency or build-output directories found under \u{201C}\((result.rootPath as NSString).lastPathComponent)\u{201D}.")
+            } else {
+                List {
+                    Section {
+                        ForEach(filteredProjectArtifacts) { entry in
+                            projectArtifactRow(entry)
+                        }
+                    } header: {
+                        projectArtifactsHeader(result)
+                    }
+                    if isFiltering, filteredProjectArtifacts.isEmpty {
+                        Text("No items match \u{201C}\(searchText)\u{201D}.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listStyle(.inset)
+            }
+        } else if let reason = model.projectScanUnavailableReason {
+            projectFoldersEmptyState(message: reason)
+        } else if model.projectFolderPath == nil {
+            projectFoldersEmptyState(message: "Choose a project folder, then Scan to find node_modules, target, .venv, and similar directories inside it.")
+        } else {
+            projectFoldersEmptyState(message: model.isScanningProjectFolder ? "Scanning\u{2026}" : "Click Scan to look inside \u{201C}\((model.projectFolderPath! as NSString).lastPathComponent)\u{201D}.")
+        }
+    }
+
+    /// `model.projectScanResult`'s entries narrowed to the toolbar search
+    /// text — same case-insensitive substring rule `filteredCategories`
+    /// uses on the Well-Known Locations tab.
+    private var filteredProjectArtifacts: [ProjectArtifactEntry] {
+        guard let entries = model.projectScanResult?.entries else { return [] }
+        guard isFiltering else { return entries }
+        let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return entries.filter { $0.path.lowercased().contains(needle) || $0.kind.lowercased().contains(needle) }
+    }
+
+    private func projectScanProgressBanner(_ progress: ProjectArtifactsScanProgress) -> some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Scanned \(Fmt.count(progress.foldersScanned)) folder(s) \u{2014} found \(Fmt.count(progress.artifactsFound)) (\(Fmt.bytes(progress.bytesFound)))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func projectFoldersEmptyState(message: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: "folder.badge.gearshape")
+                .font(.system(size: 26))
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func projectArtifactsHeader(_ result: ProjectArtifactsScanResult) -> some View {
+        HStack(spacing: 8) {
+            Toggle(isOn: projectArtifactsSelectAllBinding) {
+                EmptyView()
+            }
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+            VStack(alignment: .leading, spacing: 1) {
+                Text((result.rootPath as NSString).lastPathComponent)
+                    .font(.callout.weight(.semibold))
+                Text("\(Fmt.count(result.entries.count)) item(s) found")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Text(Fmt.bytes(result.totalBytes))
+                .font(.callout)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var projectArtifactsSelectAllBinding: Binding<Bool> {
+        Binding(
+            get: { model.areAllProjectArtifactsSelected },
+            set: { model.setAllProjectArtifactsSelected($0) }
+        )
+    }
+
+    private func projectArtifactRow(_ entry: ProjectArtifactEntry) -> some View {
+        Toggle(isOn: model.projectArtifactSelectionBinding(entry)) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.path)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(entry.kind)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Text(Fmt.bytes(entry.sizeBytes))
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.checkbox)
+    }
+
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
@@ -294,7 +546,14 @@ struct CleanupPage: View {
 /// already uses for a destructive action.
 private struct CleanConfirmationSheet: View {
     let items: [CleanupItem]
-    @ObservedObject var model: CleanupViewModel
+    /// Shared by both `CleanupPage` tabs — a plain `[CleanupItem]` in,
+    /// nothing back out — rather than an `@ObservedObject var model
+    /// CleanupViewModel` + a hardcoded `model.clean(items)` call: the two
+    /// tabs' post-clean behavior differs (Well-Known Locations rescans
+    /// the fixed locations; Project Folders rescans whichever folder is
+    /// still chosen) and each already knows which of its own two `clean`
+    /// methods to hand in.
+    let onConfirm: ([CleanupItem]) async -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var isCleaning = false
 
@@ -369,7 +628,7 @@ private struct CleanConfirmationSheet: View {
     private func confirmClean() {
         isCleaning = true
         Task {
-            await model.clean(items)
+            await onConfirm(items)
             isCleaning = false
             dismiss()
         }
@@ -595,6 +854,18 @@ final class CleanupViewModel: ObservableObject {
     /// quit, not just a clean exit.
     @Published private(set) var log: [CleanupLogEntry] = []
 
+    // MARK: - Project Folders tab
+
+    @Published private(set) var projectFolderPath: String?
+    @Published private(set) var isScanningProjectFolder = false
+    @Published private(set) var projectScanProgress: ProjectArtifactsScanProgress?
+    @Published private(set) var projectScanResult: ProjectArtifactsScanResult?
+    @Published private(set) var projectScanUnavailableReason: String?
+    @Published private var selectedProjectArtifactIDs: Set<String> = []
+
+    private let projectArtifactsScanner = ProjectArtifactsScanner()
+    private var projectScanTask: Task<Void, Never>?
+
     private let provider = CleanupProvider()
     private let defaults: UserDefaults
     private static let logDefaultsKey = "cleanupLog"
@@ -685,6 +956,115 @@ final class CleanupViewModel: ObservableObject {
         recordLog(action: .emptyTrash, categories: [], outcome: outcome)
         isCleaning = false
         scan()
+    }
+
+    // MARK: - Project Folders tab
+
+    /// Sets the folder future `scanProjectFolder()` calls scan, and clears
+    /// out whatever the previous folder's scan found — an unselected,
+    /// unscanned result from a different folder left on screen would be
+    /// actively misleading, not just stale.
+    func chooseProjectFolder(_ path: String) {
+        projectFolderPath = path
+        projectScanResult = nil
+        projectScanUnavailableReason = nil
+        selectedProjectArtifactIDs.removeAll()
+    }
+
+    func scanProjectFolder() {
+        guard let projectFolderPath, !isScanningProjectFolder else { return }
+        isScanningProjectFolder = true
+        projectScanUnavailableReason = nil
+        projectScanProgress = nil
+
+        let stream = projectArtifactsScanner.scan(rootPath: projectFolderPath)
+        projectScanTask = Task { [weak self] in
+            for await event in stream {
+                guard let self else { return }
+                switch event {
+                case .progress(let progress):
+                    self.projectScanProgress = progress
+                case .completed(let result):
+                    self.projectScanResult = result
+                    self.selectedProjectArtifactIDs.removeAll()
+                case .failed(let reason):
+                    self.projectScanUnavailableReason = reason
+                case .cancelled:
+                    break
+                }
+            }
+            guard let self else { return }
+            self.isScanningProjectFolder = false
+            self.projectScanProgress = nil
+        }
+    }
+
+    /// Takes effect the next time the scanner's walk checks its own
+    /// cancellation token — see `ProjectArtifactsScanner.cancelActiveScan`'s
+    /// own doc comment.
+    func cancelProjectScan() {
+        Task { await projectArtifactsScanner.cancelActiveScan() }
+    }
+
+    var selectedProjectArtifactItems: [CleanupItem] {
+        guard let entries = projectScanResult?.entries else { return [] }
+        return entries
+            .filter { selectedProjectArtifactIDs.contains($0.id) }
+            .map { entry in
+                CleanupItem(
+                    path: entry.path,
+                    name: (entry.path as NSString).lastPathComponent,
+                    category: .projectArtifacts,
+                    sizeBytes: entry.sizeBytes
+                )
+            }
+    }
+
+    var areAllProjectArtifactsSelected: Bool {
+        guard let entries = projectScanResult?.entries, !entries.isEmpty else { return false }
+        return entries.allSatisfy { selectedProjectArtifactIDs.contains($0.id) }
+    }
+
+    func setAllProjectArtifactsSelected(_ selected: Bool) {
+        guard let entries = projectScanResult?.entries else { return }
+        for entry in entries {
+            if selected {
+                selectedProjectArtifactIDs.insert(entry.id)
+            } else {
+                selectedProjectArtifactIDs.remove(entry.id)
+            }
+        }
+    }
+
+    func projectArtifactSelectionBinding(_ entry: ProjectArtifactEntry) -> Binding<Bool> {
+        Binding(
+            get: { self.selectedProjectArtifactIDs.contains(entry.id) },
+            set: { isOn in
+                if isOn {
+                    self.selectedProjectArtifactIDs.insert(entry.id)
+                } else {
+                    self.selectedProjectArtifactIDs.remove(entry.id)
+                }
+            }
+        )
+    }
+
+    /// Moves `items` to the Trash, then rescans the same project folder —
+    /// mirrors `clean(_:)`'s own "rescan so the list reflects the new,
+    /// smaller reality" reasoning, just against `scanProjectFolder()`
+    /// instead of the fixed-location `scan()`.
+    func cleanProjectArtifacts(_ items: [CleanupItem]) async {
+        isCleaning = true
+        let outcome = await provider.clean(items)
+        if !outcome.failed.isEmpty {
+            let names = outcome.failed.map(\.name).joined(separator: ", ")
+            lastFailureMessage = "\(outcome.failed.count) item(s) couldn\u{2019}t be moved to the Trash: \(names)"
+        }
+        recordLog(action: .clean, categories: [.projectArtifacts], outcome: outcome)
+        isCleaning = false
+        if projectFolderPath != nil {
+            scanProjectFolder()
+        }
     }
 
     func clearLog() {
