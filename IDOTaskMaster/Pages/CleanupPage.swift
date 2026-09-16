@@ -18,6 +18,7 @@ struct CleanupPage: View {
     @State private var searchText = ""
     @State private var showingCleanConfirmation = false
     @State private var showingEmptyTrashConfirmation = false
+    @State private var showingHistory = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,12 +32,16 @@ struct CleanupPage: View {
             ToolbarItem(placement: .primaryAction) { scanButton }
             ToolbarItem(placement: .primaryAction) { cleanButton }
             ToolbarItem(placement: .primaryAction) { emptyTrashButton }
+            ToolbarItem(placement: .primaryAction) { historyButton }
         }
         .sheet(isPresented: $showingCleanConfirmation) {
             CleanConfirmationSheet(items: model.selectedItems, model: model)
         }
         .sheet(isPresented: $showingEmptyTrashConfirmation) {
             EmptyTrashConfirmationSheet(model: model)
+        }
+        .sheet(isPresented: $showingHistory) {
+            CleanupHistorySheet(model: model)
         }
         .alert(
             "Some Items Couldn\u{2019}t Be Removed",
@@ -91,6 +96,15 @@ struct CleanupPage: View {
         }
         .disabled((model.result?.trashItemCount ?? 0) == 0 || model.isCleaning)
         .help("Permanently delete everything currently in the Trash")
+    }
+
+    private var historyButton: some View {
+        Button {
+            showingHistory = true
+        } label: {
+            Label("History\u{2026}", systemImage: "clock.arrow.circlepath")
+        }
+        .help("See past clean and empty-trash runs")
     }
 
     // MARK: - Status line
@@ -417,6 +431,124 @@ private struct EmptyTrashConfirmationSheet: View {
     }
 }
 
+// MARK: - History sheet
+
+/// The toolbar's "History…" destination — every past `clean(_:)`/
+/// `emptyTrash()` call, most-recent-first, read straight from
+/// `model.log`. Purely informational (no destructive action lives here),
+/// so unlike the two confirmation sheets above this is just a header,
+/// list, and a Done button — plus "Clear History", which only erases
+/// this record, never anything it once described.
+private struct CleanupHistorySheet: View {
+    @ObservedObject var model: CleanupViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            if model.log.isEmpty {
+                emptyState
+            } else {
+                list
+                    .frame(maxHeight: .infinity)
+            }
+            Divider()
+            footer
+        }
+        .frame(width: 460, height: 420)
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 22))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Clean Up History").font(.headline)
+                Text(model.log.isEmpty ? "No runs yet." : "\(model.log.count) run(s) recorded.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+    }
+
+    private var emptyState: some View {
+        VStack {
+            Spacer(minLength: 0)
+            Text("Nothing cleaned yet.")
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var list: some View {
+        List(model.log) { entry in
+            row(entry)
+        }
+        .listStyle(.inset)
+    }
+
+    private func row(_ entry: CleanupLogEntry) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: entry.action == .emptyTrash ? "trash.slash" : "trash")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title(for: entry)).font(.callout)
+                Text(Self.dateFormatter.string(from: entry.date))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(Fmt.bytes(entry.freedBytes)).font(.callout).monospacedDigit()
+                if entry.failedCount > 0 {
+                    Text("\(entry.failedCount) failed")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else {
+                    Text("\(entry.itemCount) item\(entry.itemCount == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func title(for entry: CleanupLogEntry) -> String {
+        switch entry.action {
+        case .emptyTrash:
+            return "Emptied Trash"
+        case .clean:
+            guard !entry.categories.isEmpty else { return "Cleaned Items" }
+            return entry.categories.map(\.displayName).joined(separator: ", ")
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            Button("Clear History") { model.clearLog() }
+                .disabled(model.log.isEmpty)
+            Spacer(minLength: 0)
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(14)
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+}
+
 // MARK: - Formatting
 
 private enum Fmt {
@@ -455,8 +587,26 @@ final class CleanupViewModel: ObservableObject {
     @Published private(set) var unavailableReason: String?
     @Published private var selectedItemIDs: Set<String> = []
     @Published private(set) var lastFailureMessage: String?
+    /// Every past `clean(_:)`/`emptyTrash()` call, most-recent-first —
+    /// `CleanupPage`'s History sheet. Persisted as JSON under one
+    /// `UserDefaults` key, the same shape `BenchmarksViewModel.history`
+    /// uses for the identical reason: run *data*, not a preference, and
+    /// eagerly persisted on every change so it survives a crash or force
+    /// quit, not just a clean exit.
+    @Published private(set) var log: [CleanupLogEntry] = []
 
     private let provider = CleanupProvider()
+    private let defaults: UserDefaults
+    private static let logDefaultsKey = "cleanupLog"
+    /// Same cap `BenchmarksViewModel.historyLimit` uses — Clean Up is run
+    /// far less often than a benchmark, so this represents years of
+    /// normal use, not a rounding-down of real history.
+    private static let logLimit = 200
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        log = Self.loadLog(from: defaults)
+    }
 
     var selectedItems: [CleanupItem] {
         guard let result else { return [] }
@@ -520,6 +670,7 @@ final class CleanupViewModel: ObservableObject {
             let names = outcome.failed.map(\.name).joined(separator: ", ")
             lastFailureMessage = "\(outcome.failed.count) item(s) couldn\u{2019}t be moved to the Trash: \(names)"
         }
+        recordLog(action: .clean, categories: Array(Set(items.map(\.category))), outcome: outcome)
         isCleaning = false
         scan()
     }
@@ -531,8 +682,46 @@ final class CleanupViewModel: ObservableObject {
             let names = outcome.failed.map(\.name).joined(separator: ", ")
             lastFailureMessage = "\(outcome.failed.count) item(s) in the Trash couldn\u{2019}t be removed: \(names)"
         }
+        recordLog(action: .emptyTrash, categories: [], outcome: outcome)
         isCleaning = false
         scan()
+    }
+
+    func clearLog() {
+        log = []
+        persistLog()
+    }
+
+    /// Records a completed run at the front of `log`, then trims to
+    /// `logLimit` — mirrors `BenchmarksViewModel.recordHistory(_:)`
+    /// exactly. Logged even when `outcome.cleanedCount == 0` (every item
+    /// failed): a run that accomplished nothing is still a fact worth
+    /// keeping in the record, not silently dropped.
+    private func recordLog(action: CleanupLogEntry.Action, categories: [CleanupCategory], outcome: CleanupOutcome) {
+        let entry = CleanupLogEntry(
+            id: UUID(),
+            date: Date(),
+            action: action,
+            categories: categories,
+            freedBytes: outcome.freedBytes,
+            itemCount: outcome.cleanedCount,
+            failedCount: outcome.failed.count
+        )
+        log.insert(entry, at: 0)
+        if log.count > Self.logLimit {
+            log.removeLast(log.count - Self.logLimit)
+        }
+        persistLog()
+    }
+
+    private func persistLog() {
+        guard let data = try? JSONEncoder().encode(log) else { return }
+        defaults.set(data, forKey: Self.logDefaultsKey)
+    }
+
+    private static func loadLog(from defaults: UserDefaults) -> [CleanupLogEntry] {
+        guard let data = defaults.data(forKey: logDefaultsKey) else { return [] }
+        return (try? JSONDecoder().decode([CleanupLogEntry].self, from: data)) ?? []
     }
 }
 

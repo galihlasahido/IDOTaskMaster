@@ -9,7 +9,7 @@ import Foundation
 /// overlaps with `InstalledAppsProvider`'s own related-files finder/
 /// Uninstall flow, which already handles "remove this specific app and its
 /// data" deliberately, one app at a time, with its own confirmation.
-enum CleanupCategory: String, CaseIterable, Identifiable, Sendable {
+enum CleanupCategory: String, CaseIterable, Identifiable, Sendable, Codable {
     case appCaches
     case logs
     case xcodeDerivedData
@@ -118,6 +118,34 @@ struct CleanupOutcome: Sendable, Equatable {
     let freedBytes: UInt64
     let cleanedCount: Int
     let failed: [CleanupItem]
+}
+
+/// One past `clean(_:)`/`emptyTrash()` call, kept around after the fact —
+/// unlike `CleanupOutcome` (which only lives long enough for
+/// `CleanupViewModel` to react to it), this is what
+/// `CleanupViewModel.log`/`CleanupPage`'s history sheet persist and show
+/// after the fact, mirroring `BenchmarkResult`'s own "data model owned by
+/// the provider's file, persisted and displayed by the page's view model"
+/// split.
+struct CleanupLogEntry: Sendable, Equatable, Identifiable, Codable {
+    enum Action: String, Sendable, Equatable, Codable {
+        case clean
+        case emptyTrash
+    }
+
+    let id: UUID
+    let date: Date
+    let action: Action
+    /// Which categories this run touched — always empty for `.emptyTrash`
+    /// (the Trash isn't one of `CleanupCategory`'s scannable categories),
+    /// one or more for `.clean` (a selection can span several categories
+    /// at once).
+    let categories: [CleanupCategory]
+    let freedBytes: UInt64
+    let itemCount: Int
+    /// How many of `itemCount + failedCount` items this run attempted
+    /// couldn't actually be moved/removed — 0 in the common case.
+    let failedCount: Int
 }
 
 /// Finds and clears well-known regenerable caches/logs/build output —
