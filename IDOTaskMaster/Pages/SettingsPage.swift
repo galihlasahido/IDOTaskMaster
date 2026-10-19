@@ -41,6 +41,9 @@ struct SettingsPage: View {
 
             WindowSettingsTab()
                 .tabItem { Label("Window", systemImage: "macwindow") }
+
+            IntegrationsSettingsTab()
+                .tabItem { Label("Integrations", systemImage: "puzzlepiece.extension") }
         }
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
@@ -331,4 +334,120 @@ private struct WindowSettingsTab: View {
     SettingsPage()
         .environmentObject(SettingsStore(defaults: UserDefaults(suiteName: "SettingsPage.preview")!))
         .environmentObject(UpdateChecker())
+}
+
+// MARK: - Integrations
+
+/// Registers the bundled MCP helper with Claude Code and OpenCode, so an AI
+/// assistant can read this Mac's live metrics without the user editing any
+/// config file by hand. Each row shows exactly which file it touches.
+private struct IntegrationsSettingsTab: View {
+    @State private var states: [MCPTarget: MCPTargetState] = [:]
+    @State private var busy: Set<MCPTarget> = []
+    @State private var errors: [MCPTarget: String] = [:]
+    @AppStorage(MCPIntegration.autoSyncDefaultsKey) private var autoSync = true
+
+    var body: some View {
+        Form {
+            Text("Lets AI assistants read this Mac's live CPU, memory, disk, network, process and history data through the bundled read-only MCP server. It can't change anything on this Mac.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if !MCPIntegration.helperAvailable {
+                Text("This build doesn't include the MCP helper, so registration is unavailable.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            ForEach(MCPTarget.allCases) { target in
+                row(for: target)
+            }
+
+            Toggle("Keep registrations up to date", isOn: $autoSync)
+            Text("When the app is updated or moved, an assistant you already registered is repointed to the new location at launch. It never adds a registration you didn't ask for. OpenCode's config is backed up once as opencode.jsonc.idotaskmaster.bak before the first change.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .task { await refresh() }
+    }
+
+    @ViewBuilder
+    private func row(for target: MCPTarget) -> some View {
+        let state = states[target]
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(target.displayName).fontWeight(.medium)
+                Spacer()
+                if busy.contains(target) {
+                    ProgressView().controlSize(.small)
+                } else if let state {
+                    statusLabel(state.status)
+                }
+            }
+            if let state {
+                Text(state.location)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    switch state.status {
+                    case .notInstalled:
+                        EmptyView()
+                    case .notRegistered:
+                        Button("Register") { apply(target, remove: false) }
+                    case .stale:
+                        Button("Update") { apply(target, remove: false) }
+                        Button("Remove") { apply(target, remove: true) }
+                    case .registered:
+                        Button("Remove") { apply(target, remove: true) }
+                    }
+                }
+                .disabled(busy.contains(target) || !MCPIntegration.helperAvailable)
+                .padding(.top, 2)
+            }
+            if let message = errors[target] {
+                Text(message).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func statusLabel(_ status: MCPTargetState.Status) -> some View {
+        switch status {
+        case .notInstalled:
+            Text("Not installed").foregroundStyle(.secondary)
+        case .notRegistered:
+            Text("Not registered").foregroundStyle(.secondary)
+        case .registered:
+            Label("Registered", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case .stale:
+            Label("Points to an old location", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        }
+    }
+
+    private func refresh() async {
+        let loaded = await Task.detached(priority: .userInitiated) {
+            Dictionary(uniqueKeysWithValues: MCPTarget.allCases.map { ($0, MCPIntegration.state(for: $0)) })
+        }.value
+        states = loaded
+    }
+
+    private func apply(_ target: MCPTarget, remove: Bool) {
+        busy.insert(target)
+        errors[target] = nil
+        Task {
+            let failure: String? = await Task.detached(priority: .userInitiated) {
+                do {
+                    if remove { try MCPIntegration.unregister(target) } else { try MCPIntegration.register(target) }
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            errors[target] = failure
+            await refresh()
+            busy.remove(target)
+        }
+    }
 }

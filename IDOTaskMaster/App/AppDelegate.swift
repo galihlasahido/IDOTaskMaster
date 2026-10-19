@@ -99,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         applyGlobalShortcut(enabled: settings.globalShortcutEnabled)
         LoginItemManager.setEnabled(settings.launchAtLogin)
+        MCPIntegration.autoSyncOnLaunch()
         // Starts sampling immediately, before any window exists — the
         // menu bar readout must be live "while main window is closed"
         // (PLAN.md §4 M8), not merely once one has been shown.

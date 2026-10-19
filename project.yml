@@ -21,6 +21,16 @@ targets:
       - path: IDOTaskMaster
         excludes:
           - "MCPServer/**"
+    dependencies:
+      # Ships the MCP server inside the app (Contents/Helpers/IDOTaskMasterMCP)
+      # so Settings > Integrations can register a path that stays valid and
+      # is replaced in lockstep whenever the app itself is updated.
+      - target: IDOTaskMasterMCP
+        embed: true
+        codeSign: false
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
     settings:
       base:
         PRODUCT_NAME: IDOTaskMaster
@@ -47,6 +57,11 @@ targets:
     sources:
       - path: IDOTaskMaster/Core
       - path: IDOTaskMaster/Providers
+      # Providers/CableHealthTester.swift reuses the benchmark runners'
+      # cancellation-token types; without this file the MCP target stops
+      # compiling the moment a Provider depends on it (it did, silently,
+      # from the USB & Ports release until this line was added).
+      - path: IDOTaskMaster/Benchmarks/BenchmarkRunSupport.swift
       - path: IDOTaskMaster/MCPServer
     dependencies:
       - package: MCP

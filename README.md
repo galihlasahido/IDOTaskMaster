@@ -177,35 +177,49 @@ history recorder writes to (they only query it — never `.start()` a second rec
 against it), so they return real data only once the GUI app has run at least once.
 Likewise `list_alert_rules` reads the GUI app's own `UserDefaults`-persisted rules.
 
-**Building**
+**Where the server lives**
 
-```sh
-scripts/build-mcp.sh            # Debug (default)
-scripts/build-mcp.sh Release
-```
+The server ships inside the app at
+`IDOTaskMaster.app/Contents/Helpers/IDOTaskMasterMCP`, so every DMG, PKG and zip release
+includes it — nothing to build separately.
 
-Produces a plain executable at `.build/Build/Products/<Debug|Release>/IDOTaskMasterMCP`
-(no app bundle — it's a command-line tool, not a GUI target).
+**Registering with an assistant**
 
-**Registering with an MCP client**
+Open **Settings ▸ Integrations**. It shows, for Claude Code and OpenCode, whether the
+server is registered, which config file that lives in, and a one-click Register / Update /
+Remove. Under the hood:
 
-For Claude Code, from this repo (adjust the path to wherever you built the binary):
+- **Claude Code** — runs `claude mcp add -s user idotaskmaster -- <path>` (user scope, so it
+  works from every project).
+- **OpenCode** — adds an `mcp.idotaskmaster` entry to `~/.config/opencode/opencode.jsonc`
+  (or `opencode.json`). The file is edited as text, so comments, key order and every other
+  value stay exactly as they were, and the original is copied once to
+  `<config>.idotaskmaster.bak` before the first change.
 
-```sh
-claude mcp add idotaskmaster -- /absolute/path/to/IDOTaskMasterMCP
-```
+With **Keep registrations up to date** on (the default), launching the app from
+`/Applications` repoints a registration you already made if the app was updated or moved.
+It never creates a registration you didn't ask for.
 
-For Claude Desktop or any other MCP client that reads a JSON config, add an entry like:
+For other MCP clients, point them at the helper by hand:
 
 ```json
 {
   "mcpServers": {
     "idotaskmaster": {
-      "command": "/absolute/path/to/IDOTaskMasterMCP"
+      "command": "/Applications/IDOTaskMaster.app/Contents/Helpers/IDOTaskMasterMCP"
     }
   }
 }
 ```
+
+**Building from source**
+
+```sh
+scripts/build-mcp.sh            # standalone Debug build
+scripts/build-mcp.sh Release
+```
+
+Building the app target (`scripts/build.sh`) also builds and embeds the helper.
 
 ## Support
 
