@@ -72,6 +72,7 @@ final class ProviderRegistry: @unchecked Sendable {
     let installedApps = InstalledAppsProvider()
     let openFiles = OpenFilesProvider()
     let signingInfo = SigningInfoProvider()
+    let usbPorts = USBPortsProvider()
 
     /// `nil`-fileURL default resolves to the SAME
     /// `~/Library/Application Support/IDOTaskMaster/History.sqlite` file the

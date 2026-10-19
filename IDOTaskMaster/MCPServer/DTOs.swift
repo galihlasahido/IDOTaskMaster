@@ -149,6 +149,9 @@ struct DiskUnitDTO: Encodable {
     let writeBytesPerSecond: Double?
     let totalBytesRead: UInt64
     let totalBytesWritten: UInt64
+    /// "Verified", "Failing", "Not Supported", or the raw diskutil text;
+    /// null until the first background check for this disk has finished.
+    let smartStatus: String?
 
     init(_ unit: DiskUnitSnapshot) {
         id = unit.id
@@ -159,6 +162,7 @@ struct DiskUnitDTO: Encodable {
         writeBytesPerSecond = unit.writeBytesPerSecond
         totalBytesRead = unit.totalBytesRead
         totalBytesWritten = unit.totalBytesWritten
+        smartStatus = unit.smartStatus?.displayLabel
     }
 }
 
@@ -771,5 +775,129 @@ struct ListAlertRulesResponse: Encodable {
     /// Explains why no fired-alert history is included — see
     /// `AlertsEngine.firedAlerts`'s own doc comment: it's in-memory only
     /// inside the running GUI app process and isn't reachable from here.
+    let note: String
+}
+
+
+// MARK: - USB & Ports (get_usb_ports)
+
+struct USBLinkDTO: Encodable {
+    let rateDescription: String
+    let generationDescription: String?
+    let gbps: Double?
+
+    init(_ link: USBLinkInfo) {
+        rateDescription = link.rateDescription
+        generationDescription = link.generationDescription
+        gbps = link.gbps
+    }
+}
+
+struct USBCableDTO: Encodable {
+    let productType: String?
+    let vendorID: Int?
+    let maxSpeedLabel: String?
+    let maxSpeedGbps: Double?
+    let currentRatingLabel: String?
+    /// True when the e-marker claims a speed that its vendor ID cannot back up.
+    let claimLooksImplausible: Bool
+
+    init(_ cable: USBCableInfo) {
+        productType = cable.productType
+        vendorID = cable.vendorID
+        maxSpeedLabel = cable.maxSpeedLabel
+        maxSpeedGbps = cable.maxSpeedGbps
+        currentRatingLabel = cable.currentRatingLabel
+        claimLooksImplausible = cable.claimLooksImplausible
+    }
+}
+
+struct USBPartnerDTO: Encodable {
+    let vendorID: Int?
+    let productID: Int?
+    let productType: String?
+
+    init(_ partner: USBPartnerInfo) {
+        vendorID = partner.vendorID
+        productID = partner.productID
+        productType = partner.productType
+    }
+}
+
+struct USBPortDTO: Encodable {
+    let id: String
+    let name: String
+    let portType: String
+    let isConnected: Bool
+    let connectString: String?
+    let activeTransports: [String]
+    let supportedTransports: [String]
+    let connectionCount: Int?
+    let overcurrentCount: Int?
+    let liquidDetected: Bool?
+    let activeCable: Bool?
+    let volts: Double?
+    let amps: Double?
+    let watts: Double?
+    let cable: USBCableDTO?
+    let partner: USBPartnerDTO?
+    let negotiatedLink: USBLinkDTO?
+
+    init(_ port: USBPortSnapshot) {
+        id = port.id
+        name = port.name
+        portType = port.portType
+        isConnected = port.isConnected
+        connectString = port.connectString
+        activeTransports = port.activeTransports
+        supportedTransports = port.supportedTransports
+        connectionCount = port.connectionCount
+        overcurrentCount = port.overcurrentCount
+        liquidDetected = port.liquidDetected
+        activeCable = port.activeCable
+        volts = port.volts
+        amps = port.amps
+        watts = port.watts
+        cable = port.cable.map(USBCableDTO.init)
+        partner = port.partner.map(USBPartnerDTO.init)
+        negotiatedLink = port.negotiatedLink.map(USBLinkDTO.init)
+    }
+}
+
+struct USBDeviceDTO: Encodable {
+    let name: String
+    let vendorName: String?
+    let vendorID: Int?
+    let productID: Int?
+    let speedLabel: String?
+    /// Nesting depth in the USB device tree; 0 is a root-level device.
+    let depth: Int
+
+    init(_ device: USBDeviceSnapshot) {
+        name = device.name
+        vendorName = device.vendorName
+        vendorID = device.vendorID
+        productID = device.productID
+        speedLabel = device.speedLabel
+        depth = device.depth
+    }
+}
+
+struct USBPortsResponse: Encodable {
+    let ports: [USBPortDTO]
+    let devices: [USBDeviceDTO]
+}
+
+// MARK: - Disk health (get_disk_health)
+
+struct DiskHealthEntryDTO: Encodable {
+    let disk: String
+    let mediaName: String?
+    let isInternal: Bool?
+    let smartStatus: String?
+}
+
+struct DiskHealthResponse: Encodable {
+    let disks: [DiskHealthEntryDTO]
     let note: String
 }

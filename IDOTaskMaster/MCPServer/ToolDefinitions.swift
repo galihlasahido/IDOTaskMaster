@@ -176,5 +176,27 @@ enum ToolDefinitions {
             """,
             inputSchema: Schema.object(properties: [:])
         ),
+        Tool(
+            name: "get_disk_health",
+            description: """
+            S.M.A.R.T. health per physical disk, from `diskutil info`: "Verified", \
+            "Failing", "Not Supported" (common for external USB enclosures that don't \
+            pass SMART through), or the raw text diskutil reports. A disk whose status \
+            could not be read comes back null instead of a guessed value.
+            """,
+            inputSchema: Schema.object(properties: [:])
+        ),
+        Tool(
+            name: "get_usb_ports",
+            description: """
+            Every physical USB-C/MagSafe port with live volts/amps/watts, the attached \
+            cable's e-marker identity (max speed, current rating, and \
+            `claimLooksImplausible` when the claim can't be trusted), the negotiated \
+            link speed, port health (liquid detection, overcurrent count), plus the \
+            USB device tree. Fields this Mac doesn't expose are null. Read-only: it \
+            does not run the cable-health test, which writes and reads a drive.
+            """,
+            inputSchema: Schema.object(properties: [:])
+        ),
     ]
 }

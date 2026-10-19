@@ -170,6 +170,8 @@ startup item, uninstall an app, or otherwise change anything on this Mac.
 | `list_history_series` | Which (domain, key) time series this Mac has recorded |
 | `query_history` | 24h/7d history for one (domain, key) pair |
 | `list_alert_rules` | The GUI app's configured alert rules (not fired-alert history) |
+| `get_disk_health` | S.M.A.R.T. status per physical disk (Verified / Failing / Not Supported) |
+| `get_usb_ports` | USB-C/MagSafe ports: live power, cable e-marker identity, negotiated link speed, port health, device tree |
 
 `list_history_series`/`query_history` read the same
 `~/Library/Application Support/IDOTaskMaster/History.sqlite` file the GUI app's own

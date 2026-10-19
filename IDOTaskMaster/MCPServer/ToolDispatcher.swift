@@ -31,6 +31,10 @@ enum ToolDispatcher {
             return await HistoryHandlers.queryHistory(registry: registry, arguments: arguments)
         case "list_alert_rules":
             return await AlertsHandlers.listAlertRules(registry: registry)
+        case "get_disk_health":
+            return await HardwareHandlers.getDiskHealth(registry: registry)
+        case "get_usb_ports":
+            return await HardwareHandlers.getUSBPorts(registry: registry)
         default:
             return errorResult("Unknown tool: \(name)")
         }
